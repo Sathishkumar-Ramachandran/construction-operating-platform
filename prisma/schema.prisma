@@ -1,0 +1,610 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Application user. Role is enum-safe at the TypeScript layer via UserRole
+/// (see lib/authorization/roles.ts); Role.code enforces uniqueness in the DB.
+model User {
+  id                 String    @id @default(uuid())
+  name               String
+  email              String    @unique
+  passwordHash       String    @map("password_hash")
+  roleId             String    @map("role_id")
+  role               Role      @relation(fields: [roleId], references: [id])
+  isActive           Boolean   @default(true) @map("is_active")
+  mustChangePassword Boolean   @default(false) @map("must_change_password")
+  emailVerifiedAt    DateTime? @map("email_verified_at")
+  lastLoginAt        DateTime? @map("last_login_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  createdBy          String?   @map("created_by")
+  updatedBy          String?   @map("updated_by")
+  version            Int       @default(1)
+
+  sessions            Session[]
+  auditLogs           AuditLog[]           @relation("AuditLogUser")
+  employee            Employee?
+  passwordResetTokens PasswordResetToken[]
+
+  @@map("users")
+}
+
+model Role {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  name         String
+  description  String?
+  isSystemRole Boolean  @default(false) @map("is_system_role")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  module      String
+  resource    String
+  action      String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String   @id @default(uuid())
+  roleId       String   @map("role_id")
+  permissionId String   @map("permission_id")
+  allowed      Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  beforeData Json?    @map("before_data")
+  afterData  Json?    @map("after_data")
+  metadata   Json?
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  requestId  String?  @map("request_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation("AuditLogUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
+/// Single-use, time-limited password reset token. Mirrors Session.tokenHash:
+/// only the hash is ever persisted. Domain model only in this phase — no
+/// public /login/forgot-password UI is wired up because no email provider
+/// is configured yet (see README limitations).
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// HRMS — HR master data
+// ---------------------------------------------------------------------------
+
+model Department {
+  id                 String   @id @default(uuid())
+  code               String   @unique
+  name               String
+  description        String?
+  parentDepartmentId String?  @map("parent_department_id")
+  managerEmployeeId  String?  @map("manager_employee_id")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  createdBy          String?  @map("created_by")
+  updatedBy          String?  @map("updated_by")
+
+  parentDepartment Department?   @relation("DepartmentHierarchy", fields: [parentDepartmentId], references: [id])
+  childDepartments Department[]  @relation("DepartmentHierarchy")
+  managerEmployee  Employee?     @relation("DepartmentManager", fields: [managerEmployeeId], references: [id])
+  employees        Employee[]    @relation("EmployeeDepartment")
+  designations     Designation[]
+
+  @@map("departments")
+}
+
+model Designation {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  name         String
+  description  String?
+  gradeId      String?  @map("grade_id")
+  departmentId String?  @map("department_id")
+  isManagerial Boolean  @default(false) @map("is_managerial")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  grade      EmploymentGrade? @relation(fields: [gradeId], references: [id])
+  department Department?      @relation(fields: [departmentId], references: [id])
+  employees  Employee[]       @relation("EmployeeDesignation")
+
+  requiredDocuments DesignationRequiredDocument[]
+
+  @@map("designations")
+}
+
+/// Which DocumentTypes a Designation requires (e.g. "Foreman" requires a
+/// Safety Certificate + Work Permit). Drives the missing-documents
+/// checklist on an employee's profile — not a hard upload gate.
+model DesignationRequiredDocument {
+  id             String   @id @default(uuid())
+  designationId  String   @map("designation_id")
+  documentTypeId String   @map("document_type_id")
+  isMandatory    Boolean  @default(true) @map("is_mandatory")
+  createdAt      DateTime @default(now()) @map("created_at")
+  createdBy      String?  @map("created_by")
+
+  designation  Designation  @relation(fields: [designationId], references: [id], onDelete: Cascade)
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([designationId, documentTypeId])
+  @@map("designation_required_documents")
+}
+
+model EmploymentGrade {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  rank        Int
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  designations Designation[]
+  employees    Employee[]    @relation("EmployeeGrade")
+
+  @@map("employment_grades")
+}
+
+model EmploymentType {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  employees Employee[] @relation("EmployeeEmploymentType")
+
+  @@map("employment_types")
+}
+
+model ProjectRole {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  assignments EmployeeProjectAssignment[]
+
+  @@map("project_roles")
+}
+
+model DocumentType {
+  id                   String   @id @default(uuid())
+  code                 String   @unique
+  name                 String
+  requiresExpiryDate   Boolean  @default(false) @map("requires_expiry_date")
+  isConfidential       Boolean  @default(false) @map("is_confidential")
+  allowedMimeTypes     String[] @map("allowed_mime_types")
+  maximumFileSizeBytes Int      @map("maximum_file_size_bytes")
+  retentionCategory    String?  @map("retention_category")
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  documents         EmployeeDocument[]
+  requiredByDesignations DesignationRequiredDocument[]
+
+  @@map("document_types")
+}
+
+model CertificationType {
+  id                    String   @id @default(uuid())
+  code                  String   @unique
+  name                  String
+  issuingAuthority      String?  @map("issuing_authority")
+  requiresExpiryDate    Boolean  @default(true) @map("requires_expiry_date")
+  defaultValidityMonths Int?     @map("default_validity_months")
+  reminderDays          Int[]    @map("reminder_days")
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  certifications EmployeeCertification[]
+
+  @@map("certification_types")
+}
+
+/// Single-row counter driving EXL-EMP-##### employee numbers. Updated inside
+/// the creating transaction via SELECT ... FOR UPDATE — never count()+1.
+model EmployeeNumberSequence {
+  id         Int @id @default(1)
+  lastNumber Int @default(0) @map("last_number")
+
+  @@map("employee_number_sequence")
+}
+
+// ---------------------------------------------------------------------------
+// HRMS — Employee master
+// ---------------------------------------------------------------------------
+
+model Employee {
+  id             String  @id @default(uuid())
+  employeeNumber String  @unique @map("employee_number")
+  userId         String? @unique @map("user_id")
+
+  firstName     String  @map("first_name")
+  middleName    String? @map("middle_name")
+  lastName      String? @map("last_name")
+  preferredName String? @map("preferred_name")
+
+  dateOfBirth     DateTime? @map("date_of_birth")
+  gender          String?
+  nationalityCode String?   @map("nationality_code")
+  maritalStatus   String?   @map("marital_status")
+
+  nationalIdCiphertext String? @map("national_id_ciphertext")
+  nationalIdLast4      String? @map("national_id_last4")
+  passportCiphertext   String? @map("passport_ciphertext")
+  passportLast4        String? @map("passport_last4")
+
+  personalEmail         String? @map("personal_email")
+  workEmail             String? @unique @map("work_email")
+  mobileNumber          String? @map("mobile_number")
+  alternateMobileNumber String? @map("alternate_mobile_number")
+
+  joiningDate      DateTime  @map("joining_date")
+  confirmationDate DateTime? @map("confirmation_date")
+  terminationDate  DateTime? @map("termination_date")
+  lastWorkingDate  DateTime? @map("last_working_date")
+
+  employmentStatus String @default("DRAFT") @map("employment_status")
+
+  departmentId           String  @map("department_id")
+  designationId          String  @map("designation_id")
+  gradeId                String? @map("grade_id")
+  employmentTypeId       String  @map("employment_type_id")
+  reportingManagerId     String? @map("reporting_manager_id")
+  defaultProjectId       String? @map("default_project_id")
+  defaultSiteId          String? @map("default_site_id")
+  defaultShiftTypeId     String? @map("default_shift_type_id")
+  profilePhotoDocumentId String? @map("profile_photo_document_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+  version   Int      @default(1)
+
+  user             User?            @relation(fields: [userId], references: [id])
+  department       Department       @relation("EmployeeDepartment", fields: [departmentId], references: [id], onDelete: Restrict)
+  designation      Designation      @relation("EmployeeDesignation", fields: [designationId], references: [id], onDelete: Restrict)
+  grade            EmploymentGrade? @relation("EmployeeGrade", fields: [gradeId], references: [id])
+  employmentType   EmploymentType   @relation("EmployeeEmploymentType", fields: [employmentTypeId], references: [id], onDelete: Restrict)
+  reportingManager Employee?        @relation("EmployeeHierarchy", fields: [reportingManagerId], references: [id])
+  directReports    Employee[]       @relation("EmployeeHierarchy")
+  defaultProject   Project?         @relation("EmployeeDefaultProject", fields: [defaultProjectId], references: [id])
+  defaultSite      Site?            @relation("EmployeeDefaultSite", fields: [defaultSiteId], references: [id])
+  defaultShift     ShiftType?       @relation("EmployeeDefaultShift", fields: [defaultShiftTypeId], references: [id])
+
+  managedDepartments    Department[]                   @relation("DepartmentManager")
+  addresses             EmployeeAddress[]
+  emergencyContacts     EmergencyContact[]
+  bankAccounts          EmployeeBankAccount[]
+  statusHistory         EmployeeStatusHistory[]
+  documents             EmployeeDocument[]
+  workPasses            WorkPass[]
+  certifications        EmployeeCertification[]
+  projectAssignments    EmployeeProjectAssignment[]    @relation("AssignmentEmployee")
+  availabilityOverrides EmployeeAvailabilityOverride[]
+  attendanceRecords     AttendanceRecord[]
+
+  @@index([departmentId])
+  @@index([reportingManagerId])
+  @@map("employees")
+}
+
+model EmployeeAddress {
+  id          String   @id @default(uuid())
+  employeeId  String   @map("employee_id")
+  type        String
+  line1       String
+  line2       String?
+  city        String?
+  state       String?
+  postalCode  String?  @map("postal_code")
+  countryCode String?  @map("country_code")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, type])
+  @@map("employee_addresses")
+}
+
+model EmergencyContact {
+  id             String   @id @default(uuid())
+  employeeId     String   @map("employee_id")
+  name           String
+  relationship   String
+  phone          String
+  alternatePhone String?  @map("alternate_phone")
+  email          String?
+  isPrimary      Boolean  @default(false) @map("is_primary")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("emergency_contacts")
+}
+
+model EmployeeBankAccount {
+  id                      String    @id @default(uuid())
+  employeeId              String    @map("employee_id")
+  bankName                String    @map("bank_name")
+  accountHolderName       String    @map("account_holder_name")
+  accountNumberCiphertext String    @map("account_number_ciphertext")
+  accountNumberLast4      String    @map("account_number_last4")
+  bankCode                String?   @map("bank_code")
+  branchCode              String?   @map("branch_code")
+  isPrimary               Boolean   @default(true) @map("is_primary")
+  effectiveFrom           DateTime  @map("effective_from")
+  effectiveUntil          DateTime? @map("effective_until")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+  createdBy               String?   @map("created_by")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("employee_bank_accounts")
+}
+
+/// Append-only. Never updated — a new row is written for every transition.
+model EmployeeStatusHistory {
+  id             String   @id @default(uuid())
+  employeeId     String   @map("employee_id")
+  previousStatus String?  @map("previous_status")
+  newStatus      String   @map("new_status")
+  effectiveDate  DateTime @map("effective_date")
+  reason         String
+  notes          String?
+  approvedBy     String?  @map("approved_by")
+  createdBy      String   @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("employee_status_history")
+}
+
+// ---------------------------------------------------------------------------
+// HRMS — Minimal project/site + allocation
+// (Deliberately minimal: full Project Management is a later phase. A future
+// module should extend these tables, not replace them.)
+// ---------------------------------------------------------------------------
+
+model Project {
+  id         String    @id @default(uuid())
+  code       String    @unique
+  name       String
+  clientName String?   @map("client_name")
+  status     String    @default("ACTIVE")
+  startDate  DateTime? @map("start_date")
+  endDate    DateTime? @map("end_date")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  sites               Site[]
+  assignments         EmployeeProjectAssignment[]
+  defaultForEmployees Employee[]                  @relation("EmployeeDefaultProject")
+
+  @@map("projects")
+}
+
+model Site {
+  id        String   @id @default(uuid())
+  projectId String   @map("project_id")
+  code      String
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project             Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignments         EmployeeProjectAssignment[]
+  defaultForEmployees Employee[]                  @relation("EmployeeDefaultSite")
+  attendanceRecords   AttendanceRecord[]
+
+  @@unique([projectId, code])
+  @@map("sites")
+}
+
+model EmployeeProjectAssignment {
+  id                   String    @id @default(uuid())
+  employeeId           String    @map("employee_id")
+  projectId            String    @map("project_id")
+  siteId               String?   @map("site_id")
+  projectRoleId        String?   @map("project_role_id")
+  allocationPercentage Int       @map("allocation_percentage")
+  startDate            DateTime  @map("start_date")
+  endDate              DateTime? @map("end_date")
+  isPrimary            Boolean   @default(false) @map("is_primary")
+  status               String    @default("PLANNED")
+  assignedBy           String    @map("assigned_by")
+  approvedBy           String?   @map("approved_by")
+  notes                String?
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  employee    Employee     @relation("AssignmentEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  project     Project      @relation(fields: [projectId], references: [id])
+  site        Site?        @relation(fields: [siteId], references: [id])
+  projectRole ProjectRole? @relation(fields: [projectRoleId], references: [id])
+
+  @@index([employeeId, status])
+  @@map("employee_project_assignments")
+}
+
+/// HR-authorized manual override of the derived workforce-availability
+/// status. Always reasoned and effective-dated; short-circuits derivation
+/// only while current.
+model EmployeeAvailabilityOverride {
+  id             String    @id @default(uuid())
+  employeeId     String    @map("employee_id")
+  status         String
+  reason         String
+  effectiveFrom  DateTime  @map("effective_from")
+  effectiveUntil DateTime? @map("effective_until")
+  createdBy      String    @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("employee_availability_overrides")
+}
+
+// ---------------------------------------------------------------------------
+// HRMS — Documents, work passes, certifications
+// ---------------------------------------------------------------------------
+
+model EmployeeDocument {
+  id               String    @id @default(uuid())
+  employeeId       String    @map("employee_id")
+  documentTypeId   String    @map("document_type_id")
+  storageKey       String    @map("storage_key")
+  originalFileName String    @map("original_file_name")
+  mimeType         String    @map("mime_type")
+  fileSizeBytes    Int       @map("file_size_bytes")
+  checksum         String
+  issueDate        DateTime? @map("issue_date")
+  expiryDate       DateTime? @map("expiry_date")
+  documentNumber   String?   @map("document_number")
+  issuingAuthority String?   @map("issuing_authority")
+  isConfidential   Boolean   @default(false) @map("is_confidential")
+  status           String    @default("UPLOADED")
+  verifiedBy       String?   @map("verified_by")
+  verifiedAt       DateTime? @map("verified_at")
+  notes            String?
+  revisionOfId     String?   @map("revision_of_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdBy        String?   @map("created_by")
+
+  employee       Employee                @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  documentType   DocumentType            @relation(fields: [documentTypeId], references: [id])
+  revisionOf     EmployeeDocument?       @relation("DocumentRevision", fields: [revisionOfId], references: [id])
+  revisions      EmployeeDocument[]      @relation("DocumentRevision")
+  workPasses     WorkPass[]
+  certifications EmployeeCertification[]
+
+  @@index([employeeId])
+  @@map("employee_documents")
+}
+
+model WorkPass {
+  id               String    @id @default(uuid())
+  employeeId       String    @map("employee_id")
+  passType         String    @map("pass_type")
+  passNumber       String    @map("pass_number")
+  issuingCountry   String    @map("issuing_country")
+  issuingAuthority String    @map("issuing_authority")
+  issueDate        DateTime  @map("issue_date")
+  expiryDate       DateTime  @map("expiry_date")
+  status           String    @default("VALID")
+  documentId       String?   @map("document_id")
+  notes            String?
+  verifiedBy       String?   @map("verified_by")
+  verifiedAt       DateTime? @map("verified_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  employee Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  document EmployeeDocument? @relation(fields: [documentId], references: [id])
+
+  @@index([employeeId])
+  @@map("work_passes")
+}
+
+model EmployeeCertification {
+  id               String    @id @default(uuid())
+  employeeId       String    @map("employee_id")
+  typeId           String    @map("type_id")
+  licenceNumber    String    @map("licence_number")
+  issuingAuthority String    @map("issuing_authority")
+  issueDate        DateTime  @map("issue_date")
+  expiryDate       DateTime? @map("expiry_date")
+  status           String    @default("VALID")
+  documentId       String?   @map("document_id")
+  notes            String?
+  verifiedBy       String?   @map("verified_by")
+  verifiedAt       DateTime? @map("verified_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  employee Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type     CertificationType @relation(fields: [typeId], references: [id])
+  document EmployeeDocument? @relation(fields: [documentId], references: [id])
+
+  @@index([employeeId])
+  @@map("employee_certifications")
+}

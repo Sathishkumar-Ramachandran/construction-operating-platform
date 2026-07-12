@@ -1,0 +1,87 @@
+import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+
+export const AuditAction = {
+  AUTH_LOGIN_SUCCESS: "AUTH_LOGIN_SUCCESS",
+  AUTH_LOGIN_FAILED: "AUTH_LOGIN_FAILED",
+  AUTH_LOGOUT: "AUTH_LOGOUT",
+  USER_CREATED: "USER_CREATED",
+  USER_UPDATED: "USER_UPDATED",
+  USER_ROLE_CHANGED: "USER_ROLE_CHANGED",
+  USER_ACTIVATED: "USER_ACTIVATED",
+  USER_DEACTIVATED: "USER_DEACTIVATED",
+  USER_INITIAL_PASSWORD_GENERATED: "USER_INITIAL_PASSWORD_GENERATED",
+  USER_PASSWORD_RESET_BY_ADMIN: "USER_PASSWORD_RESET_BY_ADMIN",
+  USER_PASSWORD_CHANGED: "USER_PASSWORD_CHANGED",
+  USER_SESSIONS_REVOKED: "USER_SESSIONS_REVOKED",
+  USER_PASSWORD_RESET_REQUESTED: "USER_PASSWORD_RESET_REQUESTED",
+  USER_PASSWORD_RESET_COMPLETED: "USER_PASSWORD_RESET_COMPLETED",
+
+  DEPARTMENT_CREATED: "DEPARTMENT_CREATED",
+  DEPARTMENT_UPDATED: "DEPARTMENT_UPDATED",
+  MASTER_DATA_CREATED: "MASTER_DATA_CREATED",
+  MASTER_DATA_UPDATED: "MASTER_DATA_UPDATED",
+
+  EMPLOYEE_CREATED: "EMPLOYEE_CREATED",
+  EMPLOYEE_UPDATED: "EMPLOYEE_UPDATED",
+  EMPLOYEE_PERSONAL_INFO_CHANGED: "EMPLOYEE_PERSONAL_INFO_CHANGED",
+  EMPLOYEE_BANK_INFO_CHANGED: "EMPLOYEE_BANK_INFO_CHANGED",
+  EMPLOYEE_SENSITIVE_FIELD_VIEWED: "EMPLOYEE_SENSITIVE_FIELD_VIEWED",
+  EMPLOYEE_REPORTING_MANAGER_CHANGED: "EMPLOYEE_REPORTING_MANAGER_CHANGED",
+  EMPLOYEE_STATUS_CHANGED: "EMPLOYEE_STATUS_CHANGED",
+  EMPLOYEE_OFFBOARDED: "EMPLOYEE_OFFBOARDED",
+  EMPLOYEE_USER_LINKED: "EMPLOYEE_USER_LINKED",
+  EMPLOYEE_DIRECTORY_EXPORTED: "EMPLOYEE_DIRECTORY_EXPORTED",
+
+  ASSIGNMENT_CREATED: "ASSIGNMENT_CREATED",
+  ASSIGNMENT_UPDATED: "ASSIGNMENT_UPDATED",
+  ASSIGNMENT_ENDED: "ASSIGNMENT_ENDED",
+  AVAILABILITY_OVERRIDE_SET: "AVAILABILITY_OVERRIDE_SET",
+
+  DOCUMENT_UPLOADED: "DOCUMENT_UPLOADED",
+  DOCUMENT_DOWNLOADED: "DOCUMENT_DOWNLOADED",
+  DOCUMENT_UPDATED: "DOCUMENT_UPDATED",
+  DOCUMENT_ARCHIVED: "DOCUMENT_ARCHIVED",
+  WORK_PASS_CREATED: "WORK_PASS_CREATED",
+  WORK_PASS_UPDATED: "WORK_PASS_UPDATED",
+  CERTIFICATION_CREATED: "CERTIFICATION_CREATED",
+  CERTIFICATION_UPDATED: "CERTIFICATION_UPDATED",
+} as const;
+
+export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
+
+export type RecordAuditLogInput = {
+  userId?: string | null;
+  action: AuditAction;
+  entityType: string;
+  entityId?: string | null;
+  beforeData?: Prisma.InputJsonValue | null;
+  afterData?: Prisma.InputJsonValue | null;
+  metadata?: Prisma.InputJsonValue | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  requestId?: string | null;
+};
+
+/**
+ * Writes an audit-log row. Never pass passwords, password hashes, session
+ * tokens, or other secrets in `beforeData`/`afterData`/`metadata`.
+ */
+export async function recordAuditLog(
+  client: PrismaClient | Prisma.TransactionClient,
+  input: RecordAuditLogInput
+) {
+  await client.auditLog.create({
+    data: {
+      userId: input.userId ?? null,
+      action: input.action,
+      entityType: input.entityType,
+      entityId: input.entityId ?? null,
+      beforeData: input.beforeData ?? undefined,
+      afterData: input.afterData ?? undefined,
+      metadata: input.metadata ?? undefined,
+      ipAddress: input.ipAddress ?? null,
+      userAgent: input.userAgent ?? null,
+      requestId: input.requestId ?? null,
+    },
+  });
+}
