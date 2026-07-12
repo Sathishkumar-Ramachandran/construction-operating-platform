@@ -250,7 +250,7 @@ model DocumentType {
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
-  documents         EmployeeDocument[]
+  documents              EmployeeDocument[]
   requiredByDesignations DesignationRequiredDocument[]
 
   @@map("document_types")
@@ -325,7 +325,6 @@ model Employee {
   reportingManagerId     String? @map("reporting_manager_id")
   defaultProjectId       String? @map("default_project_id")
   defaultSiteId          String? @map("default_site_id")
-  defaultShiftTypeId     String? @map("default_shift_type_id")
   profilePhotoDocumentId String? @map("profile_photo_document_id")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -343,7 +342,6 @@ model Employee {
   directReports    Employee[]       @relation("EmployeeHierarchy")
   defaultProject   Project?         @relation("EmployeeDefaultProject", fields: [defaultProjectId], references: [id])
   defaultSite      Site?            @relation("EmployeeDefaultSite", fields: [defaultSiteId], references: [id])
-  defaultShift     ShiftType?       @relation("EmployeeDefaultShift", fields: [defaultShiftTypeId], references: [id])
 
   managedDepartments    Department[]                   @relation("DepartmentManager")
   addresses             EmployeeAddress[]
@@ -355,7 +353,6 @@ model Employee {
   certifications        EmployeeCertification[]
   projectAssignments    EmployeeProjectAssignment[]    @relation("AssignmentEmployee")
   availabilityOverrides EmployeeAvailabilityOverride[]
-  attendanceRecords     AttendanceRecord[]
 
   @@index([departmentId])
   @@index([reportingManagerId])
@@ -473,7 +470,6 @@ model Site {
   project             Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignments         EmployeeProjectAssignment[]
   defaultForEmployees Employee[]                  @relation("EmployeeDefaultSite")
-  attendanceRecords   AttendanceRecord[]
 
   @@unique([projectId, code])
   @@map("sites")
