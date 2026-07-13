@@ -10,6 +10,8 @@ const LISTERS = {
   "project-roles": masterData.listProjectRoles,
   "document-types": masterData.listDocumentTypes,
   "certification-types": masterData.listCertificationTypes,
+  "shift-types": masterData.listShiftTypes,
+  holidays: masterData.listHolidays,
 } as const;
 
 type MasterDataType = keyof typeof LISTERS;

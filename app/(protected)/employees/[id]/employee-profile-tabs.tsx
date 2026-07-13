@@ -18,6 +18,7 @@ import { DocumentsPanel } from "@/app/(protected)/employees/[id]/documents-panel
 import { WorkPassesPanel } from "@/app/(protected)/employees/[id]/work-passes-panel";
 import { CertificationsPanel } from "@/app/(protected)/employees/[id]/certifications-panel";
 import { BankAccountsPanel } from "@/app/(protected)/employees/[id]/bank-accounts-panel";
+import { AttendancePanel, type AttendanceHistoryDayView } from "@/app/(protected)/employees/[id]/attendance-panel";
 import { employeeDisplayName } from "@/lib/hr/employee-display";
 import type { EmployeeAccessLevel } from "@/lib/services/employee-service";
 import type { getEmployeeById } from "@/lib/services/employee-service";
@@ -47,6 +48,8 @@ type Permissions = {
   canCreateUserFromEmployee: boolean;
   canResetPassword: boolean;
   canViewAudit: boolean;
+  canViewAttendance: boolean;
+  canManageAttendance: boolean;
 };
 
 export function EmployeeProfileTabs({
@@ -63,6 +66,7 @@ export function EmployeeProfileTabs({
   auditLogs,
   emergencyContacts,
   bankAccounts,
+  attendanceHistory,
   linkedUser,
   permissions,
 }: {
@@ -79,6 +83,7 @@ export function EmployeeProfileTabs({
   auditLogs: { id: string; action: string; createdAt: Date; metadata: unknown }[];
   emergencyContacts: Awaited<ReturnType<typeof listEmergencyContacts>>;
   bankAccounts: Awaited<ReturnType<typeof listBankAccountsMasked>>;
+  attendanceHistory: AttendanceHistoryDayView[];
   linkedUser: { id: string; name: string; email: string; isActive: boolean; lastLoginAt: Date | null } | null;
   permissions: Permissions;
 }) {
@@ -121,6 +126,7 @@ export function EmployeeProfileTabs({
               <TabsTrigger value="passes">Work Passes & Licences</TabsTrigger>
             ) : null}
             {permissions.canViewAllocation ? <TabsTrigger value="allocation">Allocation</TabsTrigger> : null}
+            {permissions.canViewAttendance ? <TabsTrigger value="attendance">Attendance</TabsTrigger> : null}
             <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>
             {permissions.canCreateUserFromEmployee || permissions.canResetPassword ? (
               <TabsTrigger value="access">User Access</TabsTrigger>
@@ -261,6 +267,17 @@ export function EmployeeProfileTabs({
               employeeId={employee.id}
               assignments={assignments}
               canManage={permissions.canManageAllocation}
+            />
+          </TabsContent>
+        ) : null}
+
+        {permissions.canViewAttendance ? (
+          <TabsContent value="attendance">
+            <AttendancePanel
+              employeeId={employee.id}
+              employeeName={employeeDisplayName(employee)}
+              history={attendanceHistory}
+              canManage={permissions.canManageAttendance}
             />
           </TabsContent>
         ) : null}

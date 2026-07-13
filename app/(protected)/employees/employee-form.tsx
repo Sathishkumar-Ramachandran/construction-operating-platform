@@ -34,7 +34,7 @@ type EmployeeFormProps =
 
 export function EmployeeForm(props: EmployeeFormProps) {
   const router = useRouter();
-  const { departments, designations, grades, employmentTypes, isLoading } =
+  const { departments, designations, grades, employmentTypes, shiftTypes, isLoading } =
     useHrMasterDataOptions();
 
   const schema = props.mode === "edit" ? updateEmployeeSchema : createEmployeeSchema;
@@ -59,6 +59,7 @@ export function EmployeeForm(props: EmployeeFormProps) {
     gradeId: "",
     employmentTypeId: "",
     reportingManagerId: "",
+    defaultShiftTypeId: "",
     ...(props.mode === "edit" ? props.initialData : {}),
   };
 
@@ -218,6 +219,24 @@ export function EmployeeForm(props: EmployeeFormProps) {
                 {employmentTypes.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
                     {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Default shift">
+            <Select
+              value={values.defaultShiftTypeId || undefined}
+              onValueChange={(v) => setValue("defaultShiftTypeId", v ?? "")}
+              disabled={isLoading}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select shift (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                {shiftTypes.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
                   </SelectItem>
                 ))}
               </SelectContent>

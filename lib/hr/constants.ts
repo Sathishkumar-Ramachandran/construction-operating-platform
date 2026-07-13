@@ -186,6 +186,54 @@ const DEFAULT_ALLOWED_MIME_TYPES = [
 ];
 const DEFAULT_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
+export const AttendanceStatus = {
+  PRESENT: "PRESENT",
+  LATE: "LATE",
+  HALF_DAY: "HALF_DAY",
+  ABSENT: "ABSENT",
+  ON_LEAVE: "ON_LEAVE",
+  HOLIDAY: "HOLIDAY",
+  WEEKEND: "WEEKEND",
+  NOT_MARKED: "NOT_MARKED",
+} as const;
+export type AttendanceStatus = (typeof AttendanceStatus)[keyof typeof AttendanceStatus];
+
+export const ATTENDANCE_STATUS_LABELS: Record<AttendanceStatus, string> = {
+  PRESENT: "Present",
+  LATE: "Late",
+  HALF_DAY: "Half-Day",
+  ABSENT: "Absent",
+  ON_LEAVE: "On Leave",
+  HOLIDAY: "Holiday",
+  WEEKEND: "Weekend",
+  NOT_MARKED: "Not Marked",
+};
+
+/** HALF_DAY and ON_LEAVE are never derived — they only ever come from an
+ *  explicit HR correction (see attendance-service.ts's correctAttendance). */
+export const AUTO_DERIVED_ATTENDANCE_STATUSES: AttendanceStatus[] = [
+  AttendanceStatus.PRESENT,
+  AttendanceStatus.LATE,
+  AttendanceStatus.ABSENT,
+  AttendanceStatus.HOLIDAY,
+  AttendanceStatus.WEEKEND,
+  AttendanceStatus.NOT_MARKED,
+];
+
+export const AttendanceSource = {
+  SELF: "SELF",
+  HR_MANUAL: "HR_MANUAL",
+} as const;
+export type AttendanceSource = (typeof AttendanceSource)[keyof typeof AttendanceSource];
+
+/**
+ * Working-week definition used to derive Absent/Weekend status. Not yet a
+ * UI-editable company setting — documented limitation, matching how other
+ * Phase-1 derivation parameters (e.g. availability thresholds) were scoped.
+ * JS Date#getDay(): 0=Sun..6=Sat. Default: Mon-Sat working, Sunday off.
+ */
+export const DEFAULT_WORKING_WEEKDAYS = [1, 2, 3, 4, 5, 6];
+
 export function defaultDocumentTypeSeedRow(
   entry: (typeof DEFAULT_DOCUMENT_TYPES)[number]
 ) {

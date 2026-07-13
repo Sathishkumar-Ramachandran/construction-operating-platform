@@ -10,7 +10,8 @@ export type MasterDataType =
   | "employment-types"
   | "project-roles"
   | "document-types"
-  | "certification-types";
+  | "certification-types"
+  | "shift-types";
 
 /**
  * Every consumer of `["hr-settings", type]` must resolve to this exact
@@ -44,16 +45,19 @@ export function useHrMasterDataOptions() {
   const designations = useMasterDataOptions("designations");
   const grades = useMasterDataOptions("grades");
   const employmentTypes = useMasterDataOptions("employment-types");
+  const shiftTypes = useMasterDataOptions("shift-types");
 
   return {
     departments: activeOnly(departments.data),
     designations: activeOnly(designations.data),
     grades: activeOnly(grades.data),
     employmentTypes: activeOnly(employmentTypes.data),
+    shiftTypes: activeOnly(shiftTypes.data),
     isLoading:
       departments.isLoading ||
       designations.isLoading ||
       grades.isLoading ||
-      employmentTypes.isLoading,
+      employmentTypes.isLoading ||
+      shiftTypes.isLoading,
   };
 }

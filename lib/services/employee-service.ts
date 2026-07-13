@@ -42,6 +42,7 @@ const MANAGER_EXTRA_SELECT = {
   alternateMobileNumber: true,
   grade: { select: { id: true, name: true } },
   employmentType: { select: { id: true, name: true } },
+  defaultShift: { select: { id: true, name: true } },
 } satisfies Prisma.EmployeeSelect;
 
 const SENSITIVE_EXTRA_SELECT = {
@@ -239,6 +240,7 @@ export async function createEmployee(
         gradeId: input.gradeId || null,
         employmentTypeId: input.employmentTypeId,
         reportingManagerId: input.reportingManagerId || null,
+        defaultShiftTypeId: input.defaultShiftTypeId || null,
         createdBy: actor.id,
         updatedBy: actor.id,
       },
@@ -331,6 +333,7 @@ export async function updateEmployee(
         gradeId: input.gradeId || null,
         employmentTypeId: input.employmentTypeId,
         reportingManagerId: input.reportingManagerId || null,
+        defaultShiftTypeId: input.defaultShiftTypeId || null,
         updatedBy: actor.id,
         version: { increment: 1 },
       },

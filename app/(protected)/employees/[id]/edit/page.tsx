@@ -47,6 +47,7 @@ export default async function EditEmployeePage({
     designationId: employee.designation?.id ?? "",
     gradeId: employee.grade?.id ?? "",
     employmentTypeId: employee.employmentType?.id ?? "",
+    defaultShiftTypeId: "defaultShift" in employee ? (employee.defaultShift?.id ?? "") : "",
   };
 
   return (

@@ -34,6 +34,11 @@ export const ErrorCode = {
   STORAGE_NOT_CONFIGURED: "STORAGE_NOT_CONFIGURED",
   DOCUMENT_FILE_TYPE_NOT_ALLOWED: "DOCUMENT_FILE_TYPE_NOT_ALLOWED",
   DOCUMENT_FILE_TOO_LARGE: "DOCUMENT_FILE_TOO_LARGE",
+
+  ATTENDANCE_NO_LINKED_EMPLOYEE: "ATTENDANCE_NO_LINKED_EMPLOYEE",
+  ATTENDANCE_ALREADY_CHECKED_IN: "ATTENDANCE_ALREADY_CHECKED_IN",
+  ATTENDANCE_NOT_CHECKED_IN: "ATTENDANCE_NOT_CHECKED_IN",
+  ATTENDANCE_ALREADY_CHECKED_OUT: "ATTENDANCE_ALREADY_CHECKED_OUT",
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -89,6 +94,12 @@ const DEFAULT_MESSAGES: Record<ErrorCode, string> = {
   DOCUMENT_FILE_TYPE_NOT_ALLOWED:
     "This file type isn't allowed for the selected document type.",
   DOCUMENT_FILE_TOO_LARGE: "This file exceeds the maximum allowed size.",
+
+  ATTENDANCE_NO_LINKED_EMPLOYEE:
+    "Your account isn't linked to an employee record, so you can't check in.",
+  ATTENDANCE_ALREADY_CHECKED_IN: "You've already checked in today.",
+  ATTENDANCE_NOT_CHECKED_IN: "You need to check in before you can check out.",
+  ATTENDANCE_ALREADY_CHECKED_OUT: "You've already checked out today.",
 };
 
 /**

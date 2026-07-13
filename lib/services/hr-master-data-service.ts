@@ -11,6 +11,7 @@ import type {
   DocumentTypeInput,
   CertificationTypeInput,
 } from "@/lib/validation/hr-master-data";
+import type { ShiftTypeInput, HolidayInput } from "@/lib/validation/attendance";
 import type { AuthenticatedUser } from "@/types/auth";
 
 type ActorMeta = { ipAddress?: string | null; userAgent?: string | null };
@@ -20,7 +21,15 @@ function normalizeOptional(value?: string | null) {
 }
 
 async function assertCodeAvailable(
-  model: "department" | "designation" | "employmentGrade" | "employmentType" | "projectRole" | "documentType" | "certificationType",
+  model:
+    | "department"
+    | "designation"
+    | "employmentGrade"
+    | "employmentType"
+    | "projectRole"
+    | "documentType"
+    | "certificationType"
+    | "shiftType",
   code: string,
   excludeId?: string
 ) {
@@ -435,4 +444,104 @@ export async function createCertificationType(
 
 export async function setCertificationTypeActive(id: string, isActive: boolean) {
   return db.certificationType.update({ where: { id }, data: { isActive } });
+}
+
+// --- Shift types ----------------------------------------------------------
+
+export async function listShiftTypes() {
+  return db.shiftType.findMany({ orderBy: { name: "asc" } });
+}
+
+export async function createShiftType(actor: AuthenticatedUser, input: ShiftTypeInput) {
+  await assertCodeAvailable("shiftType", input.code);
+  const shiftType = await db.shiftType.create({
+    data: {
+      code: input.code,
+      name: input.name,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      gracePeriodMinutes: input.gracePeriodMinutes,
+    },
+  });
+  await recordAuditLog(db, {
+    userId: actor.id,
+    action: AuditAction.MASTER_DATA_CREATED,
+    entityType: "ShiftType",
+    entityId: shiftType.id,
+  });
+  return shiftType;
+}
+
+export async function updateShiftType(
+  actor: AuthenticatedUser,
+  input: ShiftTypeInput & { id: string }
+) {
+  const existing = await db.shiftType.findUnique({ where: { id: input.id } });
+  if (!existing) throw new AppError(ErrorCode.NOT_FOUND);
+  if (input.code !== existing.code) {
+    await assertCodeAvailable("shiftType", input.code, input.id);
+  }
+  const shiftType = await db.shiftType.update({
+    where: { id: input.id },
+    data: {
+      code: input.code,
+      name: input.name,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      gracePeriodMinutes: input.gracePeriodMinutes,
+    },
+  });
+  await recordAuditLog(db, {
+    userId: actor.id,
+    action: AuditAction.MASTER_DATA_UPDATED,
+    entityType: "ShiftType",
+    entityId: shiftType.id,
+  });
+  return shiftType;
+}
+
+export async function setShiftTypeActive(id: string, isActive: boolean) {
+  return db.shiftType.update({ where: { id }, data: { isActive } });
+}
+
+// --- Holidays ---------------------------------------------------------
+
+export async function listHolidays() {
+  return db.holiday.findMany({ orderBy: { date: "asc" } });
+}
+
+export async function createHoliday(actor: AuthenticatedUser, input: HolidayInput) {
+  const date = new Date(input.date);
+  const existing = await db.holiday.findUnique({ where: { date } });
+  if (existing) throw new AppError(ErrorCode.VALIDATION_ERROR, "A holiday already exists on this date.");
+
+  const holiday = await db.holiday.create({
+    data: {
+      date,
+      name: input.name,
+      description: normalizeOptional(input.description),
+    },
+  });
+  await recordAuditLog(db, {
+    userId: actor.id,
+    action: AuditAction.HOLIDAY_CREATED,
+    entityType: "Holiday",
+    entityId: holiday.id,
+    afterData: { date: input.date, name: holiday.name },
+  });
+  return holiday;
+}
+
+export async function deleteHoliday(actor: AuthenticatedUser, id: string) {
+  const existing = await db.holiday.findUnique({ where: { id } });
+  if (!existing) throw new AppError(ErrorCode.NOT_FOUND);
+
+  await db.holiday.delete({ where: { id } });
+  await recordAuditLog(db, {
+    userId: actor.id,
+    action: AuditAction.HOLIDAY_DELETED,
+    entityType: "Holiday",
+    entityId: id,
+    beforeData: { date: existing.date.toISOString(), name: existing.name },
+  });
 }

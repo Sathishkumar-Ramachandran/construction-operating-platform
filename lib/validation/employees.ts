@@ -30,6 +30,7 @@ export const createEmployeeSchema = z.object({
   gradeId: z.uuid().optional().or(z.literal("")),
   employmentTypeId: z.uuid("Select an employment type."),
   reportingManagerId: z.uuid().optional().or(z.literal("")),
+  defaultShiftTypeId: z.uuid().optional().or(z.literal("")),
 });
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
 

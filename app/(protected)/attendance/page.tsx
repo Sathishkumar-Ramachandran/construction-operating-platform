@@ -1,29 +1,44 @@
-import { CalendarClock } from "lucide-react";
 import { requirePermission } from "@/lib/auth/guards";
 import { PERMISSIONS } from "@/lib/authorization/permissions";
 import { UserRole } from "@/lib/authorization/roles";
+import { hasPermission } from "@/lib/services/authorization-service";
+import { getMyTodayAttendance } from "@/lib/services/attendance-service";
 import { PageHeader } from "@/components/shared/page-header";
-import { EmptyState } from "@/components/shared/empty-state";
+import { CheckInOutCard } from "@/app/(protected)/attendance/check-in-out-card";
+import { AttendanceBoard } from "@/app/(protected)/attendance/attendance-board";
 
 export default async function AttendancePage() {
   const user = await requirePermission(PERMISSIONS.HR_ATTENDANCE_VIEW.code);
   const isTeamMemberOnly = user.role === UserRole.TEAM_MEMBER;
 
+  const [today, canManage] = await Promise.all([
+    getMyTodayAttendance(user),
+    hasPermission(user, PERMISSIONS.HR_ATTENDANCE_MANAGE.code),
+  ]);
+
   return (
     <div className="space-y-6">
       <PageHeader
         title={isTeamMemberOnly ? "My Attendance" : "Attendance"}
-        description="Attendance tracking is not built yet."
-      />
-      <EmptyState
-        icon={CalendarClock}
-        title="Attendance tracking is coming soon"
         description={
           isTeamMemberOnly
-            ? "Your clock-in/out history and attendance summary will appear here."
-            : "Workforce attendance, clock-in/out records, and site check-ins will appear here."
+            ? "Check in and out, and see your attendance history."
+            : "Check in and out, and see today's workforce attendance."
         }
       />
+
+      {today ? (
+        <CheckInOutCard
+          initial={{
+            status: today.status,
+            checkInAt: today.checkInAt ? today.checkInAt.toISOString() : null,
+            checkOutAt: today.checkOutAt ? today.checkOutAt.toISOString() : null,
+            holidayName: today.holidayName,
+          }}
+        />
+      ) : null}
+
+      {!isTeamMemberOnly ? <AttendanceBoard canManage={canManage} /> : null}
     </div>
   );
 }

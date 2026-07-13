@@ -325,6 +325,7 @@ model Employee {
   reportingManagerId     String? @map("reporting_manager_id")
   defaultProjectId       String? @map("default_project_id")
   defaultSiteId          String? @map("default_site_id")
+  defaultShiftTypeId     String? @map("default_shift_type_id")
   profilePhotoDocumentId String? @map("profile_photo_document_id")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -342,6 +343,7 @@ model Employee {
   directReports    Employee[]       @relation("EmployeeHierarchy")
   defaultProject   Project?         @relation("EmployeeDefaultProject", fields: [defaultProjectId], references: [id])
   defaultSite      Site?            @relation("EmployeeDefaultSite", fields: [defaultSiteId], references: [id])
+  defaultShift     ShiftType?       @relation("EmployeeDefaultShift", fields: [defaultShiftTypeId], references: [id])
 
   managedDepartments    Department[]                   @relation("DepartmentManager")
   addresses             EmployeeAddress[]
@@ -353,6 +355,7 @@ model Employee {
   certifications        EmployeeCertification[]
   projectAssignments    EmployeeProjectAssignment[]    @relation("AssignmentEmployee")
   availabilityOverrides EmployeeAvailabilityOverride[]
+  attendanceRecords     AttendanceRecord[]
 
   @@index([departmentId])
   @@index([reportingManagerId])
@@ -470,6 +473,7 @@ model Site {
   project             Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignments         EmployeeProjectAssignment[]
   defaultForEmployees Employee[]                  @relation("EmployeeDefaultSite")
+  attendanceRecords   AttendanceRecord[]
 
   @@unique([projectId, code])
   @@map("sites")
@@ -603,4 +607,65 @@ model EmployeeCertification {
 
   @@index([employeeId])
   @@map("employee_certifications")
+}
+
+// ---------------------------------------------------------------------------
+// HRMS — Attendance
+// ---------------------------------------------------------------------------
+
+model ShiftType {
+  id                 String   @id @default(uuid())
+  code               String   @unique
+  name               String
+  startTime          String   @map("start_time")
+  endTime            String   @map("end_time")
+  gracePeriodMinutes Int      @default(15) @map("grace_period_minutes")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  employees         Employee[]         @relation("EmployeeDefaultShift")
+  attendanceRecords AttendanceRecord[]
+
+  @@map("shift_types")
+}
+
+model Holiday {
+  id          String   @id @default(uuid())
+  date        DateTime @unique @db.Date
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("holidays")
+}
+
+/// One row per employee per calendar day. Absence for days with no row is
+/// derived on read (see lib/services/attendance-service.ts), not stored —
+/// mirrors the EmployeeAvailabilityOverride "derive, don't sweep" pattern.
+model AttendanceRecord {
+  id          String    @id @default(uuid())
+  employeeId  String    @map("employee_id")
+  date        DateTime  @db.Date
+  siteId      String?   @map("site_id")
+  shiftTypeId String?   @map("shift_type_id")
+  checkInAt   DateTime? @map("check_in_at")
+  checkOutAt  DateTime? @map("check_out_at")
+  status      String
+  source      String    @default("SELF")
+  notes       String?
+  createdBy   String?   @map("created_by")
+  updatedBy   String?   @map("updated_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  employee  Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  site      Site?      @relation(fields: [siteId], references: [id])
+  shiftType ShiftType? @relation(fields: [shiftTypeId], references: [id])
+
+  @@unique([employeeId, date])
+  @@index([employeeId, date])
+  @@index([date, status])
+  @@map("attendance_records")
 }

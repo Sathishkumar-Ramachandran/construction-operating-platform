@@ -13,6 +13,7 @@ import { listWorkPasses } from "@/lib/services/work-pass-service";
 import { listCertifications } from "@/lib/services/certification-service";
 import { getDirectReports } from "@/lib/services/org-hierarchy-service";
 import { listEmergencyContacts, listBankAccountsMasked } from "@/lib/services/employee-personal-service";
+import { getEmployeeAttendanceHistory } from "@/lib/services/attendance-service";
 import { db } from "@/lib/db";
 import { EmployeeProfileTabs } from "@/app/(protected)/employees/[id]/employee-profile-tabs";
 
@@ -49,6 +50,8 @@ export default async function EmployeeProfilePage({
     canCreateUserFromEmployee,
     canResetPassword,
     canViewAudit,
+    canViewAttendance,
+    canManageAttendance,
     availability,
     statusHistory,
     assignments,
@@ -60,6 +63,7 @@ export default async function EmployeeProfilePage({
     auditLogs,
     emergencyContacts,
     bankAccounts,
+    attendanceHistoryRaw,
   ] = await Promise.all([
     hasPermission(actor, PERMISSIONS.HR_EMPLOYEE_UPDATE.code),
     hasPermission(actor, PERMISSIONS.HR_EMPLOYEE_DEACTIVATE.code),
@@ -75,6 +79,8 @@ export default async function EmployeeProfilePage({
     hasPermission(actor, PERMISSIONS.USERS_CREATE_FROM_EMPLOYEE.code),
     hasPermission(actor, PERMISSIONS.USERS_RESET_PASSWORD.code),
     hasPermission(actor, PERMISSIONS.AUDIT_VIEW.code),
+    hasPermission(actor, PERMISSIONS.HR_ATTENDANCE_VIEW.code),
+    hasPermission(actor, PERMISSIONS.HR_ATTENDANCE_MANAGE.code),
     getWorkforceAvailability(employee.id),
     getStatusHistory(employee.id),
     listAssignmentsForEmployee(employee.id),
@@ -102,7 +108,25 @@ export default async function EmployeeProfilePage({
     ),
     access === "SENSITIVE" ? listEmergencyContacts(employee.id) : [],
     access === "SENSITIVE" ? listBankAccountsMasked(employee.id) : [],
+    hasPermission(actor, PERMISSIONS.HR_ATTENDANCE_VIEW.code).then((can) => {
+      if (!can) return [];
+      const to = new Date();
+      const from = new Date();
+      from.setDate(from.getDate() - 29);
+      return getEmployeeAttendanceHistory(actor, employee.id, {
+        from: from.toISOString().slice(0, 10),
+        to: to.toISOString().slice(0, 10),
+      });
+    }),
   ]);
+
+  const attendanceHistory = attendanceHistoryRaw.map((day) => ({
+    date: day.date,
+    status: day.status,
+    checkInAt: day.checkInAt ? day.checkInAt.toISOString() : null,
+    checkOutAt: day.checkOutAt ? day.checkOutAt.toISOString() : null,
+    notes: day.notes,
+  }));
 
   const linkedUser = employee.userId
     ? await db.user.findUnique({
@@ -131,6 +155,7 @@ export default async function EmployeeProfilePage({
         auditLogs={auditLogs}
         emergencyContacts={emergencyContacts}
         bankAccounts={bankAccounts}
+        attendanceHistory={attendanceHistory}
         linkedUser={linkedUser}
         permissions={{
           canUpdate,
@@ -147,6 +172,8 @@ export default async function EmployeeProfilePage({
           canCreateUserFromEmployee,
           canResetPassword,
           canViewAudit,
+          canViewAttendance,
+          canManageAttendance,
         }}
       />
     </div>

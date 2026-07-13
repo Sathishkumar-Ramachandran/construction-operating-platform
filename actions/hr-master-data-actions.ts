@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth/guards";
 import { PERMISSIONS } from "@/lib/authorization/permissions";
@@ -13,6 +14,7 @@ import {
   certificationTypeSchema,
   toggleActiveSchema,
 } from "@/lib/validation/hr-master-data";
+import { shiftTypeSchema, holidaySchema } from "@/lib/validation/attendance";
 import * as masterData from "@/lib/services/hr-master-data-service";
 import { isAppError } from "@/lib/errors";
 import type { ActionResult } from "@/actions/user-actions";
@@ -191,4 +193,57 @@ export async function setCertificationTypeActiveAction(input: unknown): Promise<
   const type = await masterData.setCertificationTypeActive(parsed.data.id, parsed.data.isActive);
   revalidateSettings();
   return { ok: true, data: type };
+}
+
+export async function saveShiftTypeAction(input: unknown): Promise<ActionResult> {
+  const actor = await requirePermission(PERMISSIONS.HR_MASTER_DATA_MANAGE.code);
+  const parsed = shiftTypeSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+  try {
+    const shiftType = parsed.data.id
+      ? await masterData.updateShiftType(actor, { ...parsed.data, id: parsed.data.id })
+      : await masterData.createShiftType(actor, parsed.data);
+    revalidateSettings();
+    return { ok: true, data: shiftType };
+  } catch (error) {
+    if (isAppError(error)) return { ok: false, message: error.message };
+    throw error;
+  }
+}
+
+export async function setShiftTypeActiveAction(input: unknown): Promise<ActionResult> {
+  await requirePermission(PERMISSIONS.HR_MASTER_DATA_MANAGE.code);
+  const parsed = toggleActiveSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Invalid input." };
+  const shiftType = await masterData.setShiftTypeActive(parsed.data.id, parsed.data.isActive);
+  revalidateSettings();
+  return { ok: true, data: shiftType };
+}
+
+export async function saveHolidayAction(input: unknown): Promise<ActionResult> {
+  const actor = await requirePermission(PERMISSIONS.HR_MASTER_DATA_MANAGE.code);
+  const parsed = holidaySchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+  try {
+    const holiday = await masterData.createHoliday(actor, parsed.data);
+    revalidateSettings();
+    return { ok: true, data: holiday };
+  } catch (error) {
+    if (isAppError(error)) return { ok: false, message: error.message };
+    throw error;
+  }
+}
+
+export async function deleteHolidayAction(input: unknown): Promise<ActionResult> {
+  const actor = await requirePermission(PERMISSIONS.HR_MASTER_DATA_MANAGE.code);
+  const parsed = z.object({ id: z.uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Invalid input." };
+  try {
+    await masterData.deleteHoliday(actor, parsed.data.id);
+    revalidateSettings();
+    return { ok: true, data: null };
+  } catch (error) {
+    if (isAppError(error)) return { ok: false, message: error.message };
+    throw error;
+  }
 }
