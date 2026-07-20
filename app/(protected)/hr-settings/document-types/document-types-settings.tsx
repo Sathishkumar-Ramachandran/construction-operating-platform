@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,13 +14,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { MasterDataPage } from "@/components/hr/master-data-page";
+import { MasterDataPage, type MasterDataRow } from "@/components/hr/master-data-page";
 import { saveDocumentTypeAction, setDocumentTypeActiveAction } from "@/actions/hr-master-data-actions";
 
 const DEFAULT_MIME_TYPES = "application/pdf,image/png,image/jpeg";
 
 export function DocumentTypesSettings() {
   const [createOpen, setCreateOpen] = useState(false);
+  const [editRow, setEditRow] = useState<MasterDataRow | null>(null);
 
   return (
     <MasterDataPage
@@ -38,26 +39,65 @@ export function DocumentTypesSettings() {
           <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
             <Plus className="size-4" aria-hidden /> New document type
           </Button>
-          {createOpen ? <CreateDialog onOpenChange={setCreateOpen} onCreated={onCreated} /> : null}
+          {createOpen ? <SaveDialog onOpenChange={setCreateOpen} onSaved={onCreated} /> : null}
+        </>
+      )}
+      renderRowActions={(row, onUpdated) => (
+        <>
+          <Button variant="outline" size="sm" onClick={() => setEditRow(row)} className="gap-1.5">
+            <Pencil className="size-3.5" aria-hidden /> Edit
+          </Button>
+          {editRow?.id === row.id ? (
+            <SaveDialog
+              initial={{
+                id: row.id,
+                code: row.code,
+                name: row.name,
+                requiresExpiryDate: Boolean(row.requiresExpiryDate),
+                isConfidential: Boolean(row.isConfidential),
+                allowedMimeTypes: ((row.allowedMimeTypes as string[] | undefined) ?? [])
+                  .join(",") || DEFAULT_MIME_TYPES,
+                maxSizeMb: String(
+                  Math.round(Number(row.maximumFileSizeBytes ?? 10 * 1024 * 1024) / (1024 * 1024))
+                ),
+              }}
+              onOpenChange={(open) => !open && setEditRow(null)}
+              onSaved={() => {
+                setEditRow(null);
+                onUpdated();
+              }}
+            />
+          ) : null}
         </>
       )}
     />
   );
 }
 
-function CreateDialog({
+function SaveDialog({
+  initial,
   onOpenChange,
-  onCreated,
+  onSaved,
 }: {
+  initial?: {
+    id: string;
+    code: string;
+    name: string;
+    requiresExpiryDate: boolean;
+    isConfidential: boolean;
+    allowedMimeTypes: string;
+    maxSizeMb: string;
+  };
   onOpenChange: (open: boolean) => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }) {
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
-  const [requiresExpiryDate, setRequiresExpiryDate] = useState(false);
-  const [isConfidential, setIsConfidential] = useState(false);
-  const [allowedMimeTypes, setAllowedMimeTypes] = useState(DEFAULT_MIME_TYPES);
-  const [maxSizeMb, setMaxSizeMb] = useState("10");
+  const isEdit = Boolean(initial?.id);
+  const [code, setCode] = useState(initial?.code ?? "");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [requiresExpiryDate, setRequiresExpiryDate] = useState(initial?.requiresExpiryDate ?? false);
+  const [isConfidential, setIsConfidential] = useState(initial?.isConfidential ?? false);
+  const [allowedMimeTypes, setAllowedMimeTypes] = useState(initial?.allowedMimeTypes ?? DEFAULT_MIME_TYPES);
+  const [maxSizeMb, setMaxSizeMb] = useState(initial?.maxSizeMb ?? "10");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit() {
@@ -67,6 +107,7 @@ function CreateDialog({
     }
     setSubmitting(true);
     const result = await saveDocumentTypeAction({
+      id: initial?.id,
       code: code.toUpperCase(),
       name,
       requiresExpiryDate,
@@ -79,16 +120,16 @@ function CreateDialog({
       toast.error(result.message);
       return;
     }
-    toast.success("Document type created.");
+    toast.success(`Document type ${isEdit ? "updated" : "created"}.`);
     onOpenChange(false);
-    onCreated();
+    onSaved();
   }
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New document type</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit document type" : "New document type"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
@@ -121,7 +162,7 @@ function CreateDialog({
             Cancel
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? "Creating…" : "Create"}
+            {submitting ? "Saving…" : isEdit ? "Save changes" : "Create"}
           </Button>
         </DialogFooter>
       </DialogContent>

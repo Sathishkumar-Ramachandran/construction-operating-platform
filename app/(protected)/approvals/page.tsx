@@ -1,23 +1,20 @@
-import { ClipboardCheck } from "lucide-react";
-import { requireRole } from "@/lib/auth/guards";
-import { UserRole } from "@/lib/authorization/roles";
+import { requirePermission } from "@/lib/auth/guards";
+import { PERMISSIONS } from "@/lib/authorization/permissions";
+import { hasPermission } from "@/lib/services/authorization-service";
 import { PageHeader } from "@/components/shared/page-header";
-import { EmptyState } from "@/components/shared/empty-state";
+import { ApprovalsInbox } from "@/app/(protected)/approvals/approvals-inbox";
 
 export default async function ApprovalsPage() {
-  await requireRole([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]);
+  const actor = await requirePermission(PERMISSIONS.APPROVALS_VIEW.code);
+  const canDecide = await hasPermission(actor, PERMISSIONS.APPROVALS_DECIDE.code);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Approvals"
-        description="Approval workflows are not built yet."
+        description="Requests waiting on your decision, and requests you've filed."
       />
-      <EmptyState
-        icon={ClipboardCheck}
-        title="Approval workflows are coming soon"
-        description="Pending approvals for your projects and team will appear here."
-      />
+      <ApprovalsInbox canDecide={canDecide} />
     </div>
   );
 }

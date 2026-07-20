@@ -40,6 +40,21 @@ export async function requirePermission(
   return user;
 }
 
+/** Like requirePermission, but passes if the actor holds ANY of the given
+ * codes — for actions two different modules can both authorize (e.g. a
+ * project's Team Management reusing the HR allocation engine) without
+ * granting the broader of the two permissions to callers who only need
+ * the narrower one. */
+export async function requireAnyPermission(
+  codes: PermissionCode[]
+): Promise<AuthenticatedUser> {
+  const user = await requireUser();
+  for (const code of codes) {
+    if (await hasPermission(user, code)) return user;
+  }
+  redirect("/unauthorized");
+}
+
 export type ApiGuardResult =
   | { user: AuthenticatedUser; response?: never }
   | { user?: never; response: Response };

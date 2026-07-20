@@ -47,14 +47,20 @@ export const NAVIGATION: NavigationGroup[] = [
     ],
   },
   {
-    title: "Management",
+    title: "My Things",
     items: [
       {
-        title: "Projects",
-        href: "/projects",
-        icon: FolderKanban,
+        title: "My Tasks",
+        href: "/tasks",
+        icon: ListChecks,
         permissions: [PERMISSIONS.PROJECTS_VIEW.code],
       },
+      { title: "My Profile", href: "/profile", icon: UserCircle },
+    ],
+  },
+  {
+    title: "Management",
+    items: [
       {
         title: "Team",
         href: "/team",
@@ -62,21 +68,21 @@ export const NAVIGATION: NavigationGroup[] = [
         permissions: [PERMISSIONS.TEAM_VIEW.code],
       },
       {
-        title: "Tasks",
-        href: "/tasks",
-        icon: ListChecks,
-        roles: [
-          UserRole.SUPER_ADMIN,
-          UserRole.ADMIN,
-          UserRole.MANAGER,
-          UserRole.TEAM_MEMBER,
-        ],
-      },
-      {
         title: "Approvals",
         href: "/approvals",
         icon: ClipboardCheck,
-        roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER],
+        permissions: [PERMISSIONS.APPROVALS_VIEW.code],
+      },
+    ],
+  },
+  {
+    title: "Project Management",
+    items: [
+      {
+        title: "Projects",
+        href: "/projects",
+        icon: FolderKanban,
+        permissions: [PERMISSIONS.PROJECTS_VIEW.code],
       },
     ],
   },
@@ -87,7 +93,7 @@ export const NAVIGATION: NavigationGroup[] = [
         title: "Employees",
         href: "/employees",
         icon: UserRound,
-        permissions: [PERMISSIONS.HR_EMPLOYEES_VIEW.code, PERMISSIONS.HR_EMPLOYEE_VIEW.code],
+        permissions: [PERMISSIONS.HR_EMPLOYEE_VIEW.code],
       },
       {
         title: "Availability",
@@ -116,13 +122,13 @@ export const NAVIGATION: NavigationGroup[] = [
     ],
   },
   {
-    title: "Operations",
+    title: "ERP",
     items: [
       {
-        title: "Inventory",
-        href: "/inventory",
+        title: "Materials & Suppliers",
+        href: "/erp",
         icon: Boxes,
-        permissions: [PERMISSIONS.INVENTORY_VIEW.code],
+        permissions: [PERMISSIONS.INVENTORY_MANAGE.code],
       },
     ],
   },
@@ -158,12 +164,6 @@ export const NAVIGATION: NavigationGroup[] = [
         icon: Settings,
         permissions: [PERMISSIONS.SETTINGS_VIEW.code],
       },
-    ],
-  },
-  {
-    title: "Account",
-    items: [
-      { title: "My Profile", href: "/profile", icon: UserCircle },
     ],
   },
 ];

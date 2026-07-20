@@ -88,6 +88,17 @@ export const WORKFORCE_AVAILABILITY_LABELS: Record<
   INACTIVE: "Inactive",
 };
 
+export const WorkLocation = {
+  OFFICE: "OFFICE",
+  SITE: "SITE",
+} as const;
+export type WorkLocation = (typeof WorkLocation)[keyof typeof WorkLocation];
+
+export const WORK_LOCATION_LABELS: Record<WorkLocation, string> = {
+  OFFICE: "Office",
+  SITE: "Site",
+};
+
 export const INACTIVE_EMPLOYMENT_STATUSES: EmploymentStatus[] = [
   EmploymentStatus.RESIGNED,
   EmploymentStatus.TERMINATED,
@@ -149,6 +160,21 @@ export const DEFAULT_EMPLOYMENT_TYPES = [
   { code: "INTERN", name: "Intern" },
   { code: "TEMPORARY", name: "Temporary" },
   { code: "SUBCONTRACTED", name: "Subcontracted" },
+] as const;
+
+/** Singapore-appropriate starter leave types. NS/Reservist leave is
+ *  deliberately excluded — it interacts with Payroll make-up-pay claims,
+ *  not just scheduling, and is deferred to the Payroll phase. */
+export const DEFAULT_LEAVE_TYPES = [
+  { code: "ANNUAL", name: "Annual Leave", defaultEntitlementDays: 14, isPaid: true },
+  { code: "SICK", name: "Sick Leave (Outpatient)", defaultEntitlementDays: 14, isPaid: true },
+  { code: "HOSPITALIZATION", name: "Hospitalization Leave", defaultEntitlementDays: 60, isPaid: true },
+  { code: "MATERNITY", name: "Maternity Leave", defaultEntitlementDays: 112, isPaid: true },
+  { code: "PATERNITY", name: "Paternity Leave", defaultEntitlementDays: 14, isPaid: true },
+  { code: "SHARED_PARENTAL", name: "Shared Parental Leave", defaultEntitlementDays: 0, isPaid: true },
+  { code: "CHILDCARE", name: "Childcare Leave", defaultEntitlementDays: 6, isPaid: true },
+  { code: "COMPASSIONATE", name: "Compassionate Leave", defaultEntitlementDays: 3, isPaid: true },
+  { code: "UNPAID", name: "Unpaid Leave", defaultEntitlementDays: 0, isPaid: false },
 ] as const;
 
 export const DEFAULT_PROJECT_ROLES = [
@@ -223,8 +249,25 @@ export const AUTO_DERIVED_ATTENDANCE_STATUSES: AttendanceStatus[] = [
 export const AttendanceSource = {
   SELF: "SELF",
   HR_MANUAL: "HR_MANUAL",
+  MANAGER_MANUAL: "MANAGER_MANUAL",
+  LEAVE: "LEAVE",
 } as const;
 export type AttendanceSource = (typeof AttendanceSource)[keyof typeof AttendanceSource];
+
+export const LeaveRequestStatus = {
+  PENDING: "PENDING",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+  CANCELLED: "CANCELLED",
+} as const;
+export type LeaveRequestStatus = (typeof LeaveRequestStatus)[keyof typeof LeaveRequestStatus];
+
+export const LEAVE_REQUEST_STATUS_LABELS: Record<LeaveRequestStatus, string> = {
+  PENDING: "Pending",
+  APPROVED: "Approved",
+  REJECTED: "Rejected",
+  CANCELLED: "Cancelled",
+};
 
 /**
  * Working-week definition used to derive Absent/Weekend status. Not yet a

@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { requirePermission, requireUser } from "@/lib/auth/guards";
+import { requireAnyPermission, requireUser } from "@/lib/auth/guards";
 import { PERMISSIONS } from "@/lib/authorization/permissions";
 import { correctAttendanceSchema } from "@/lib/validation/attendance";
 import * as attendanceService from "@/lib/services/attendance-service";
@@ -47,8 +47,16 @@ export async function checkOutAction(): Promise<ActionResult> {
   }
 }
 
+/** Reachable by HR_ATTENDANCE_MANAGE (org-wide, HR/Admin) or
+ * PROJECTS_TEAM_MANAGE (Managers, project-scoped) — the fine-grained
+ * per-employee check happens inside correctAttendance's
+ * assertCanMarkAttendanceForEmployee, same "narrow gate here, real check in
+ * the service" shape used for allocation actions. */
 export async function correctAttendanceAction(input: unknown): Promise<ActionResult> {
-  const actor = await requirePermission(PERMISSIONS.HR_ATTENDANCE_MANAGE.code);
+  const actor = await requireAnyPermission([
+    PERMISSIONS.HR_ATTENDANCE_MANAGE.code,
+    PERMISSIONS.PROJECTS_TEAM_MANAGE.code,
+  ]);
   const parsed = correctAttendanceSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };

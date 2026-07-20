@@ -97,6 +97,27 @@ export const PERMISSIONS = {
     "MANAGE",
     "Manage projects."
   ),
+  PROJECTS_TEAM_MANAGE: permission(
+    "PROJECTS.TEAM.MANAGE",
+    "PROJECTS",
+    "TEAM",
+    "MANAGE",
+    "Assign or end an employee's assignment to a project from the project workspace."
+  ),
+  PROJECTS_RESOURCE_REQUEST_MANAGE: permission(
+    "PROJECTS.RESOURCE_REQUEST.MANAGE",
+    "PROJECTS",
+    "RESOURCE_REQUEST",
+    "MANAGE",
+    "Request equipment/materials for a project and cancel your own pending requests."
+  ),
+  PROJECTS_TASK_MANAGE: permission(
+    "PROJECTS.TASK.MANAGE",
+    "PROJECTS",
+    "TASK",
+    "MANAGE",
+    "Create and assign tasks within a project."
+  ),
 
   TEAM_VIEW: permission("TEAM.VIEW", "TEAM", "TEAM", "VIEW", "View team."),
   TEAM_MANAGE: permission(
@@ -107,20 +128,6 @@ export const PERMISSIONS = {
     "Manage team members."
   ),
 
-  HR_EMPLOYEES_VIEW: permission(
-    "HR.EMPLOYEES.VIEW",
-    "HR",
-    "EMPLOYEES",
-    "VIEW",
-    "View employees."
-  ),
-  HR_EMPLOYEES_MANAGE: permission(
-    "HR.EMPLOYEES.MANAGE",
-    "HR",
-    "EMPLOYEES",
-    "MANAGE",
-    "Manage employees."
-  ),
   HR_ATTENDANCE_VIEW: permission(
     "HR.ATTENDANCE.VIEW",
     "HR",
@@ -349,6 +356,21 @@ export const PERMISSIONS = {
     "CREATE_FROM_EMPLOYEE",
     "Create a system-user account from an employee record."
   ),
+
+  APPROVALS_VIEW: permission(
+    "APPROVALS.APPROVALS.VIEW",
+    "APPROVALS",
+    "APPROVALS",
+    "VIEW",
+    "View the approvals inbox (requests you made or can decide)."
+  ),
+  APPROVALS_DECIDE: permission(
+    "APPROVALS.APPROVALS.DECIDE",
+    "APPROVALS",
+    "APPROVALS",
+    "DECIDE",
+    "Approve or reject pending approval requests assigned to you."
+  ),
 } as const;
 
 export type PermissionCode =
@@ -378,8 +400,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, PermissionCode[]> = {
     PERMISSIONS.USERS_CREATE_FROM_EMPLOYEE.code,
     PERMISSIONS.ROLES_VIEW.code,
     PERMISSIONS.PROJECTS_VIEW.code,
+    PERMISSIONS.PROJECTS_MANAGE.code,
+    PERMISSIONS.PROJECTS_TASK_MANAGE.code,
     PERMISSIONS.INVENTORY_VIEW.code,
-    PERMISSIONS.REPORTS_VIEW.code,
+    PERMISSIONS.INVENTORY_MANAGE.code,
     PERMISSIONS.SETTINGS_VIEW.code,
     PERMISSIONS.SETTINGS_MANAGE.code,
     PERMISSIONS.AUDIT_VIEW.code,
@@ -394,28 +418,35 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, PermissionCode[]> = {
     PERMISSIONS.HR_MASTER_DATA_MANAGE.code,
     PERMISSIONS.HR_ATTENDANCE_VIEW.code,
     PERMISSIONS.HR_ATTENDANCE_MANAGE.code,
+    PERMISSIONS.APPROVALS_VIEW.code,
+    PERMISSIONS.APPROVALS_DECIDE.code,
   ],
 
   [UserRole.MANAGER]: [
     PERMISSIONS.DASHBOARD_VIEW.code,
     PERMISSIONS.PROJECTS_VIEW.code,
+    PERMISSIONS.PROJECTS_TEAM_MANAGE.code,
+    PERMISSIONS.PROJECTS_RESOURCE_REQUEST_MANAGE.code,
+    PERMISSIONS.PROJECTS_TASK_MANAGE.code,
+    PERMISSIONS.INVENTORY_VIEW.code,
     PERMISSIONS.TEAM_VIEW.code,
     PERMISSIONS.TEAM_MANAGE.code,
-    PERMISSIONS.REPORTS_VIEW.code,
     PERMISSIONS.HR_EMPLOYEE_VIEW.code,
     PERMISSIONS.HR_ALLOCATION_VIEW.code,
     PERMISSIONS.HR_ATTENDANCE_VIEW.code,
+    PERMISSIONS.HR_LEAVE_VIEW.code,
+    PERMISSIONS.APPROVALS_VIEW.code,
+    PERMISSIONS.APPROVALS_DECIDE.code,
   ],
 
   [UserRole.HR]: [
     PERMISSIONS.DASHBOARD_VIEW.code,
-    PERMISSIONS.HR_EMPLOYEES_VIEW.code,
-    PERMISSIONS.HR_EMPLOYEES_MANAGE.code,
     PERMISSIONS.HR_ATTENDANCE_VIEW.code,
     PERMISSIONS.HR_ATTENDANCE_MANAGE.code,
     PERMISSIONS.HR_LEAVE_VIEW.code,
     PERMISSIONS.HR_LEAVE_MANAGE.code,
-    PERMISSIONS.REPORTS_VIEW.code,
+    PERMISSIONS.APPROVALS_VIEW.code,
+    PERMISSIONS.APPROVALS_DECIDE.code,
     PERMISSIONS.HR_EMPLOYEE_VIEW.code,
     PERMISSIONS.HR_EMPLOYEE_VIEW_SENSITIVE.code,
     PERMISSIONS.HR_EMPLOYEE_CREATE.code,
@@ -443,5 +474,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, PermissionCode[]> = {
     PERMISSIONS.DASHBOARD_VIEW.code,
     PERMISSIONS.HR_ATTENDANCE_VIEW.code,
     PERMISSIONS.HR_LEAVE_VIEW.code,
+    PERMISSIONS.APPROVALS_VIEW.code,
+    PERMISSIONS.PROJECTS_VIEW.code,
   ],
 };

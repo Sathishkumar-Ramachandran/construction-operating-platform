@@ -29,22 +29,35 @@ export type MasterDataRow = {
  * mounts it via `renderCreateAction`. */
 export function MasterDataPage({
   apiType,
+  apiBasePath = "/api/hr-settings",
+  queryKeyPrefix = "hr-settings",
   extraColumns,
   onToggleActive,
   renderCreateAction,
+  renderRowActions,
 }: {
   apiType: string;
+  /** Defaults to the HR settings dispatcher — pass a different base (e.g.
+   * "/api/erp-settings") to reuse this table for another module's master
+   * data without duplicating the list/toggle table markup. */
+  apiBasePath?: string;
+  /** Defaults to "hr-settings" to preserve the existing cache key every HR
+   * settings page and useMasterDataOptions already rely on — pass a
+   * different prefix alongside a different apiBasePath so the two never
+   * collide in the TanStack Query cache. */
+  queryKeyPrefix?: string;
   extraColumns?: { header: string; render: (row: MasterDataRow) => React.ReactNode }[];
   onToggleActive?: (row: MasterDataRow, isActive: boolean) => Promise<void>;
   renderCreateAction: (onCreated: () => void) => React.ReactNode;
+  renderRowActions?: (row: MasterDataRow, onUpdated: () => void) => React.ReactNode;
 }) {
-  // Cached under the same ["hr-settings", apiType] key as useMasterDataOptions,
-  // so this must resolve to the identical shape (a plain array) — see the
-  // warning in components/hr/use-master-data-options.ts.
+  // Cached under the same [queryKeyPrefix, apiType] key as
+  // useMasterDataOptions relies on for HR types — see the warning in
+  // components/hr/use-master-data-options.ts.
   const { data, isLoading, refetch } = useQuery<MasterDataRow[]>({
-    queryKey: ["hr-settings", apiType],
+    queryKey: [queryKeyPrefix, apiType],
     queryFn: async () => {
-      const res = await fetch(`/api/hr-settings/${apiType}`);
+      const res = await fetch(`${apiBasePath}/${apiType}`);
       if (!res.ok) throw new Error("Failed to load.");
       const { items } = await res.json();
       return items;
@@ -70,6 +83,7 @@ export function MasterDataPage({
                   <TableHead key={col.header}>{col.header}</TableHead>
                 ))}
                 {onToggleActive ? <TableHead>Active</TableHead> : null}
+                {renderRowActions ? <TableHead className="text-right">Actions</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -97,6 +111,9 @@ export function MasterDataPage({
                         <StatusBadge isActive={row.isActive !== false} />
                       </div>
                     </TableCell>
+                  ) : null}
+                  {renderRowActions ? (
+                    <TableCell className="text-right">{renderRowActions(row, () => refetch())}</TableCell>
                   ) : null}
                 </TableRow>
               ))}

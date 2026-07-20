@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Pencil, ShieldAlert, Hash, CalendarDays, Building2, Users2 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Pencil, ShieldAlert, Hash, CalendarDays, Building2, Users2, ClipboardCheck, X } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -89,8 +90,20 @@ export function EmployeeProfileTabs({
 }) {
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [offboardOpen, setOffboardOpen] = useState(false);
+  const [onboardingBannerDismissed, setOnboardingBannerDismissed] = useState(false);
 
   const isOffboarded = employee.employmentStatus === "OFFBOARDED" || employee.employmentStatus === "ARCHIVED";
+
+  const searchParams = useSearchParams();
+  const isOnboarding = searchParams.get("onboarding") === "1" && permissions.canViewDocuments;
+
+  const mandatoryChecklist = documentChecklist.filter((item) => item.isMandatory);
+  const mandatoryUploadedCount = mandatoryChecklist.filter((item) => item.status !== "MISSING").length;
+  const showOnboardingBanner =
+    isOnboarding &&
+    !onboardingBannerDismissed &&
+    mandatoryChecklist.length > 0 &&
+    mandatoryUploadedCount < mandatoryChecklist.length;
 
   return (
     <div className="space-y-6">
@@ -114,7 +127,30 @@ export function EmployeeProfileTabs({
         ) : null}
       </div>
 
-      <Tabs defaultValue="overview">
+      {showOnboardingBanner ? (
+        <div className="flex items-start gap-3 rounded-xl border border-gold/30 bg-gold/5 p-4 text-sm">
+          <ClipboardCheck className="mt-0.5 size-4 shrink-0 text-gold" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-foreground">
+              Onboarding: {mandatoryUploadedCount} of {mandatoryChecklist.length} required documents uploaded
+            </p>
+            <p className="mt-0.5 text-muted-foreground">
+              Finish uploading this employee&apos;s required documents to complete onboarding.
+            </p>
+          </div>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="shrink-0"
+            onClick={() => setOnboardingBannerDismissed(true)}
+          >
+            <X className="size-4" aria-hidden />
+            <span className="sr-only">Dismiss</span>
+          </Button>
+        </div>
+      ) : null}
+
+      <Tabs defaultValue={isOnboarding ? "documents" : "overview"}>
         <div className="overflow-x-auto">
           <TabsList variant="line" className="w-max min-w-full">
             <TabsTrigger value="overview">Overview</TabsTrigger>

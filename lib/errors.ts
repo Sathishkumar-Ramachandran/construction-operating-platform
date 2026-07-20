@@ -39,6 +39,39 @@ export const ErrorCode = {
   ATTENDANCE_ALREADY_CHECKED_IN: "ATTENDANCE_ALREADY_CHECKED_IN",
   ATTENDANCE_NOT_CHECKED_IN: "ATTENDANCE_NOT_CHECKED_IN",
   ATTENDANCE_ALREADY_CHECKED_OUT: "ATTENDANCE_ALREADY_CHECKED_OUT",
+
+  APPROVAL_NOT_FOUND: "APPROVAL_NOT_FOUND",
+  APPROVAL_ALREADY_DECIDED: "APPROVAL_ALREADY_DECIDED",
+  APPROVAL_NOT_AUTHORIZED_APPROVER: "APPROVAL_NOT_AUTHORIZED_APPROVER",
+  APPROVAL_INVALID_STEP_ORDER: "APPROVAL_INVALID_STEP_ORDER",
+  APPROVAL_NO_APPROVERS_RESOLVED: "APPROVAL_NO_APPROVERS_RESOLVED",
+  APPROVAL_UNKNOWN_MODULE: "APPROVAL_UNKNOWN_MODULE",
+
+  LEAVE_OVERLAPPING_REQUEST: "LEAVE_OVERLAPPING_REQUEST",
+  LEAVE_INSUFFICIENT_BALANCE: "LEAVE_INSUFFICIENT_BALANCE",
+  LEAVE_REQUEST_NOT_FOUND: "LEAVE_REQUEST_NOT_FOUND",
+  LEAVE_REQUEST_NOT_CANCELLABLE: "LEAVE_REQUEST_NOT_CANCELLABLE",
+
+  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  PROJECT_NOT_ACTIVE: "PROJECT_NOT_ACTIVE",
+  PROJECT_INVALID_STATUS_TRANSITION: "PROJECT_INVALID_STATUS_TRANSITION",
+  SITE_NOT_FOUND: "SITE_NOT_FOUND",
+  SITE_STAGE_ALREADY_COMPLETE: "SITE_STAGE_ALREADY_COMPLETE",
+  SITE_STAGE_HANDOVER_ALREADY_PENDING: "SITE_STAGE_HANDOVER_ALREADY_PENDING",
+  SITE_STAGE_NOT_AUTHORIZED: "SITE_STAGE_NOT_AUTHORIZED",
+  SITE_STAGE_CHECKLIST_INCOMPLETE: "SITE_STAGE_CHECKLIST_INCOMPLETE",
+  SITE_STAGE_CHECKLIST_LOCKED: "SITE_STAGE_CHECKLIST_LOCKED",
+  RESOURCE_REQUEST_NOT_FOUND: "RESOURCE_REQUEST_NOT_FOUND",
+  RESOURCE_REQUEST_NOT_CANCELLABLE: "RESOURCE_REQUEST_NOT_CANCELLABLE",
+
+  TASK_NOT_FOUND: "TASK_NOT_FOUND",
+  TASK_NOT_AUTHORIZED: "TASK_NOT_AUTHORIZED",
+  TASK_ASSIGNEE_NOT_ON_PROJECT: "TASK_ASSIGNEE_NOT_ON_PROJECT",
+  ATTENDANCE_MARK_NOT_AUTHORIZED: "ATTENDANCE_MARK_NOT_AUTHORIZED",
+
+  MATERIAL_NOT_FOUND: "MATERIAL_NOT_FOUND",
+  MATERIAL_CATEGORY_NOT_FOUND: "MATERIAL_CATEGORY_NOT_FOUND",
+  SUPPLIER_NOT_FOUND: "SUPPLIER_NOT_FOUND",
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -100,6 +133,43 @@ const DEFAULT_MESSAGES: Record<ErrorCode, string> = {
   ATTENDANCE_ALREADY_CHECKED_IN: "You've already checked in today.",
   ATTENDANCE_NOT_CHECKED_IN: "You need to check in before you can check out.",
   ATTENDANCE_ALREADY_CHECKED_OUT: "You've already checked out today.",
+
+  APPROVAL_NOT_FOUND: "Approval request not found.",
+  APPROVAL_ALREADY_DECIDED: "This approval step has already been decided.",
+  APPROVAL_NOT_AUTHORIZED_APPROVER:
+    "You are not an authorized approver for this request.",
+  APPROVAL_INVALID_STEP_ORDER:
+    "This isn't the current step awaiting a decision.",
+  APPROVAL_NO_APPROVERS_RESOLVED:
+    "No approver could be resolved for this request.",
+  APPROVAL_UNKNOWN_MODULE: "This approval module isn't registered.",
+
+  LEAVE_OVERLAPPING_REQUEST:
+    "You already have a pending or approved leave request that overlaps these dates.",
+  LEAVE_INSUFFICIENT_BALANCE: "You don't have enough leave balance remaining for this request.",
+  LEAVE_REQUEST_NOT_FOUND: "Leave request not found.",
+  LEAVE_REQUEST_NOT_CANCELLABLE: "Only a pending leave request can be cancelled.",
+
+  PROJECT_NOT_FOUND: "Project not found.",
+  PROJECT_NOT_ACTIVE: "This project is not active.",
+  PROJECT_INVALID_STATUS_TRANSITION: "That project status change isn't allowed from the current status.",
+  SITE_NOT_FOUND: "Site not found.",
+  SITE_STAGE_ALREADY_COMPLETE: "This site has already completed its execution workflow.",
+  SITE_STAGE_HANDOVER_ALREADY_PENDING: "A handover approval is already pending for this site.",
+  SITE_STAGE_NOT_AUTHORIZED: "You must be assigned to this site (or be an Admin) to advance its stage.",
+  SITE_STAGE_CHECKLIST_INCOMPLETE: "Complete every checklist item for this stage before advancing.",
+  SITE_STAGE_CHECKLIST_LOCKED: "This stage's checklist can no longer be edited — the site has moved on.",
+  RESOURCE_REQUEST_NOT_FOUND: "Resource request not found.",
+  RESOURCE_REQUEST_NOT_CANCELLABLE: "Only a pending resource request can be cancelled.",
+
+  TASK_NOT_FOUND: "Task not found.",
+  TASK_NOT_AUTHORIZED: "You are not authorized to update this task.",
+  TASK_ASSIGNEE_NOT_ON_PROJECT: "The assignee must be actively assigned to this project.",
+  ATTENDANCE_MARK_NOT_AUTHORIZED: "You are not authorized to mark attendance for this employee.",
+
+  MATERIAL_NOT_FOUND: "Material not found.",
+  MATERIAL_CATEGORY_NOT_FOUND: "Material category not found.",
+  SUPPLIER_NOT_FOUND: "Supplier not found.",
 };
 
 /**

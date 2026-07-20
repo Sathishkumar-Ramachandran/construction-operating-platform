@@ -16,6 +16,7 @@ import {
   DEFAULT_EMPLOYMENT_TYPES,
   DEFAULT_PROJECT_ROLES,
   DEFAULT_DOCUMENT_TYPES,
+  DEFAULT_LEAVE_TYPES,
   defaultDocumentTypeSeedRow,
 } from "@/lib/hr/constants";
 import { ensureEmployeeNumberSequenceSeeded } from "@/lib/services/employee-number-service";
@@ -70,9 +71,34 @@ async function seedPermissions() {
     permissions.set(def.code, permission);
   }
 
+  // Permissions retired from lib/authorization/permissions.ts (e.g. the
+  // legacy HR.EMPLOYEES.* codes) no longer have a row upserted above — drop
+  // them so they don't linger as grantable-but-dead rows. Cascades to
+  // RolePermission (see prisma/schema.prisma's onDelete: Cascade).
+  const currentCodes = ALL_PERMISSIONS.map((p) => p.code);
+  const { count: removed } = await db.permission.deleteMany({
+    where: { code: { notIn: currentCodes } },
+  });
+  if (removed > 0) console.log(`Removed ${removed} retired permission(s).`);
+
   console.log(`Seeded ${permissions.size} permissions.`);
   return permissions;
 }
+
+/**
+ * Role/permission combos that were granted by a previous seed run but have
+ * since been removed from DEFAULT_ROLE_PERMISSIONS. Listed explicitly
+ * (rather than diffing the whole matrix) so this stays a one-time, narrow
+ * cleanup and never touches custom grants made outside the default matrix
+ * via the Role viewer UI (ROLES.UPDATE).
+ */
+const RETIRED_ROLE_PERMISSION_GRANTS: { role: UserRole; permissionCode: string }[] = [
+  { role: UserRole.ADMIN, permissionCode: "REPORTS.VIEW" },
+  { role: UserRole.MANAGER, permissionCode: "REPORTS.VIEW" },
+  { role: UserRole.HR, permissionCode: "REPORTS.VIEW" },
+  { role: UserRole.HR, permissionCode: "PROJECTS.MANAGE" },
+  { role: UserRole.HR, permissionCode: "PROJECTS.VIEW" },
+];
 
 async function seedRolePermissions(
   roles: Map<string, { id: string }>,
@@ -101,6 +127,15 @@ async function seedRolePermissions(
       });
       count += 1;
     }
+  }
+
+  for (const retired of RETIRED_ROLE_PERMISSION_GRANTS) {
+    const role = roles.get(retired.role);
+    const permission = permissions.get(retired.permissionCode);
+    if (!role || !permission) continue;
+    await db.rolePermission.deleteMany({
+      where: { roleId: role.id, permissionId: permission.id },
+    });
   }
 
   console.log(`Seeded ${count} role-permission mappings.`);
@@ -172,6 +207,26 @@ async function seedDocumentTypes() {
   console.log(`Seeded ${DEFAULT_DOCUMENT_TYPES.length} document types.`);
 }
 
+async function seedLeaveTypes() {
+  for (const entry of DEFAULT_LEAVE_TYPES) {
+    await db.leaveType.upsert({
+      where: { code: entry.code },
+      create: {
+        code: entry.code,
+        name: entry.name,
+        defaultEntitlementDays: entry.defaultEntitlementDays,
+        isPaid: entry.isPaid,
+      },
+      update: {
+        name: entry.name,
+        defaultEntitlementDays: entry.defaultEntitlementDays,
+        isPaid: entry.isPaid,
+      },
+    });
+  }
+  console.log(`Seeded ${DEFAULT_LEAVE_TYPES.length} leave types.`);
+}
+
 async function main() {
   const roles = await seedRoles();
   const permissions = await seedPermissions();
@@ -180,6 +235,7 @@ async function main() {
   await seedEmploymentTypes();
   await seedProjectRoles();
   await seedDocumentTypes();
+  await seedLeaveTypes();
   await ensureEmployeeNumberSequenceSeeded();
 }
 

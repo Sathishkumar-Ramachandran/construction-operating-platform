@@ -15,18 +15,18 @@ describe("authorization-service against the seeded role/permission matrix", () =
     expect(allowed).toBe(true);
   });
 
-  it("does not grant ADMIN access to HR.EMPLOYEES.MANAGE", async () => {
+  it("does not grant ADMIN access to HR.DOCUMENT.UPLOAD", async () => {
     const allowed = await hasPermission(
       { role: UserRole.ADMIN, isActive: true },
-      PERMISSIONS.HR_EMPLOYEES_MANAGE.code
+      PERMISSIONS.HR_DOCUMENT_UPLOAD.code
     );
     expect(allowed).toBe(false);
   });
 
-  it("grants HR access to HR.EMPLOYEES.MANAGE", async () => {
+  it("grants HR access to HR.DOCUMENT.UPLOAD", async () => {
     const allowed = await hasPermission(
       { role: UserRole.HR, isActive: true },
-      PERMISSIONS.HR_EMPLOYEES_MANAGE.code
+      PERMISSIONS.HR_DOCUMENT_UPLOAD.code
     );
     expect(allowed).toBe(true);
   });
@@ -58,6 +58,68 @@ describe("authorization-service against the seeded role/permission matrix", () =
     );
     expect(attendance).toBe(true);
     expect(teamManage).toBe(false);
+  });
+
+  it("grants MANAGER PROJECTS.TEAM.MANAGE and PROJECTS.RESOURCE_REQUEST.MANAGE but not PROJECTS.MANAGE", async () => {
+    const teamManage = await hasPermission(
+      { role: UserRole.MANAGER, isActive: true },
+      PERMISSIONS.PROJECTS_TEAM_MANAGE.code
+    );
+    const resourceRequestManage = await hasPermission(
+      { role: UserRole.MANAGER, isActive: true },
+      PERMISSIONS.PROJECTS_RESOURCE_REQUEST_MANAGE.code
+    );
+    const projectsManage = await hasPermission(
+      { role: UserRole.MANAGER, isActive: true },
+      PERMISSIONS.PROJECTS_MANAGE.code
+    );
+    expect(teamManage).toBe(true);
+    expect(resourceRequestManage).toBe(true);
+    expect(projectsManage).toBe(false);
+  });
+
+  it("does not grant HR access to PROJECTS.MANAGE or PROJECTS.VIEW", async () => {
+    const manage = await hasPermission(
+      { role: UserRole.HR, isActive: true },
+      PERMISSIONS.PROJECTS_MANAGE.code
+    );
+    const view = await hasPermission(
+      { role: UserRole.HR, isActive: true },
+      PERMISSIONS.PROJECTS_VIEW.code
+    );
+    expect(manage).toBe(false);
+    expect(view).toBe(false);
+  });
+
+  it("grants ADMIN and MANAGER PROJECTS.TASK.MANAGE but not TEAM_MEMBER", async () => {
+    const adminAllowed = await hasPermission(
+      { role: UserRole.ADMIN, isActive: true },
+      PERMISSIONS.PROJECTS_TASK_MANAGE.code
+    );
+    const managerAllowed = await hasPermission(
+      { role: UserRole.MANAGER, isActive: true },
+      PERMISSIONS.PROJECTS_TASK_MANAGE.code
+    );
+    const teamMemberAllowed = await hasPermission(
+      { role: UserRole.TEAM_MEMBER, isActive: true },
+      PERMISSIONS.PROJECTS_TASK_MANAGE.code
+    );
+    expect(adminAllowed).toBe(true);
+    expect(managerAllowed).toBe(true);
+    expect(teamMemberAllowed).toBe(false);
+  });
+
+  it("grants TEAM_MEMBER PROJECTS.VIEW but not PROJECTS.MANAGE", async () => {
+    const view = await hasPermission(
+      { role: UserRole.TEAM_MEMBER, isActive: true },
+      PERMISSIONS.PROJECTS_VIEW.code
+    );
+    const manage = await hasPermission(
+      { role: UserRole.TEAM_MEMBER, isActive: true },
+      PERMISSIONS.PROJECTS_MANAGE.code
+    );
+    expect(view).toBe(true);
+    expect(manage).toBe(false);
   });
 
   it("hasRole matches an explicit allow-list for non-Super-Admin roles", async () => {

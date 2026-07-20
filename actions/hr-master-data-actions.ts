@@ -15,6 +15,7 @@ import {
   toggleActiveSchema,
 } from "@/lib/validation/hr-master-data";
 import { shiftTypeSchema, holidaySchema } from "@/lib/validation/attendance";
+import { leaveTypeSchema } from "@/lib/validation/leave";
 import * as masterData from "@/lib/services/hr-master-data-service";
 import { isAppError } from "@/lib/errors";
 import type { ActionResult } from "@/actions/user-actions";
@@ -108,7 +109,9 @@ export async function saveEmploymentTypeAction(input: unknown): Promise<ActionRe
   const parsed = employmentTypeSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
   try {
-    const type = await masterData.createEmploymentType(actor, parsed.data);
+    const type = parsed.data.id
+      ? await masterData.updateEmploymentType(actor, { ...parsed.data, id: parsed.data.id })
+      : await masterData.createEmploymentType(actor, parsed.data);
     revalidateSettings();
     return { ok: true, data: type };
   } catch (error) {
@@ -131,7 +134,9 @@ export async function saveProjectRoleAction(input: unknown): Promise<ActionResul
   const parsed = projectRoleSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
   try {
-    const role = await masterData.createProjectRole(actor, parsed.data);
+    const role = parsed.data.id
+      ? await masterData.updateProjectRole(actor, { ...parsed.data, id: parsed.data.id })
+      : await masterData.createProjectRole(actor, parsed.data);
     revalidateSettings();
     return { ok: true, data: role };
   } catch (error) {
@@ -154,7 +159,9 @@ export async function saveDocumentTypeAction(input: unknown): Promise<ActionResu
   const parsed = documentTypeSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
   try {
-    const type = await masterData.createDocumentType(actor, parsed.data);
+    const type = parsed.data.id
+      ? await masterData.updateDocumentType(actor, { ...parsed.data, id: parsed.data.id })
+      : await masterData.createDocumentType(actor, parsed.data);
     revalidateSettings();
     return { ok: true, data: type };
   } catch (error) {
@@ -177,7 +184,9 @@ export async function saveCertificationTypeAction(input: unknown): Promise<Actio
   const parsed = certificationTypeSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
   try {
-    const type = await masterData.createCertificationType(actor, parsed.data);
+    const type = parsed.data.id
+      ? await masterData.updateCertificationType(actor, { ...parsed.data, id: parsed.data.id })
+      : await masterData.createCertificationType(actor, parsed.data);
     revalidateSettings();
     return { ok: true, data: type };
   } catch (error) {
@@ -246,4 +255,29 @@ export async function deleteHolidayAction(input: unknown): Promise<ActionResult>
     if (isAppError(error)) return { ok: false, message: error.message };
     throw error;
   }
+}
+
+export async function saveLeaveTypeAction(input: unknown): Promise<ActionResult> {
+  const actor = await requirePermission(PERMISSIONS.HR_MASTER_DATA_MANAGE.code);
+  const parsed = leaveTypeSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+  try {
+    const leaveType = parsed.data.id
+      ? await masterData.updateLeaveType(actor, { ...parsed.data, id: parsed.data.id })
+      : await masterData.createLeaveType(actor, parsed.data);
+    revalidateSettings();
+    return { ok: true, data: leaveType };
+  } catch (error) {
+    if (isAppError(error)) return { ok: false, message: error.message };
+    throw error;
+  }
+}
+
+export async function setLeaveTypeActiveAction(input: unknown): Promise<ActionResult> {
+  await requirePermission(PERMISSIONS.HR_MASTER_DATA_MANAGE.code);
+  const parsed = toggleActiveSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Invalid input." };
+  const leaveType = await masterData.setLeaveTypeActive(parsed.data.id, parsed.data.isActive);
+  revalidateSettings();
+  return { ok: true, data: leaveType };
 }

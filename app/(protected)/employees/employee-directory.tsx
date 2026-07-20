@@ -26,7 +26,7 @@ import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
 import { EmploymentStatusBadge } from "@/components/shared/employment-status-badge";
 import { WorkforceAvailabilityBadge } from "@/components/shared/workforce-availability-badge";
-import { ALL_EMPLOYMENT_STATUSES, EMPLOYMENT_STATUS_LABELS } from "@/lib/hr/constants";
+import { ALL_EMPLOYMENT_STATUSES, EMPLOYMENT_STATUS_LABELS, WorkLocation, WORK_LOCATION_LABELS } from "@/lib/hr/constants";
 import type { EmployeesListResponse } from "@/types/employee";
 
 const PAGE_SIZE = 20;
@@ -41,6 +41,7 @@ export function EmployeeDirectory({
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [workLocationFilter, setWorkLocationFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -48,12 +49,17 @@ export function EmployeeDirectory({
     return () => clearTimeout(timeout);
   }, [search]);
 
-  const [appliedFilters, setAppliedFilters] = useState({ debouncedSearch, statusFilter });
+  const [appliedFilters, setAppliedFilters] = useState({
+    debouncedSearch,
+    statusFilter,
+    workLocationFilter,
+  });
   if (
     appliedFilters.debouncedSearch !== debouncedSearch ||
-    appliedFilters.statusFilter !== statusFilter
+    appliedFilters.statusFilter !== statusFilter ||
+    appliedFilters.workLocationFilter !== workLocationFilter
   ) {
-    setAppliedFilters({ debouncedSearch, statusFilter });
+    setAppliedFilters({ debouncedSearch, statusFilter, workLocationFilter });
     setPage(1);
   }
 
@@ -61,10 +67,11 @@ export function EmployeeDirectory({
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (statusFilter !== "all") params.set("employmentStatus", statusFilter);
+    if (workLocationFilter !== "all") params.set("workLocation", workLocationFilter);
     params.set("page", String(page));
     params.set("pageSize", String(PAGE_SIZE));
     return params.toString();
-  }, [debouncedSearch, statusFilter, page]);
+  }, [debouncedSearch, statusFilter, workLocationFilter, page]);
 
   const { data, isLoading, isError, refetch } = useQuery<EmployeesListResponse>({
     queryKey: ["employees", queryParams],
@@ -87,7 +94,17 @@ export function EmployeeDirectory({
             onChange={(e) => setSearch(e.target.value)}
             className="sm:max-w-xs"
           />
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value ?? "all")}>
+          <Select
+            value={statusFilter}
+            onValueChange={(value) => setStatusFilter(value ?? "all")}
+            items={[
+              { value: "all", label: "All statuses" },
+              ...ALL_EMPLOYMENT_STATUSES.map((status) => ({
+                value: status,
+                label: EMPLOYMENT_STATUS_LABELS[status],
+              })),
+            ]}
+          >
             <SelectTrigger className="w-full sm:w-48">
               <SelectValue placeholder="Employment status" />
             </SelectTrigger>
@@ -96,6 +113,29 @@ export function EmployeeDirectory({
               {ALL_EMPLOYMENT_STATUSES.map((status) => (
                 <SelectItem key={status} value={status}>
                   {EMPLOYMENT_STATUS_LABELS[status]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={workLocationFilter}
+            onValueChange={(value) => setWorkLocationFilter(value ?? "all")}
+            items={[
+              { value: "all", label: "All locations" },
+              ...Object.values(WorkLocation).map((loc) => ({
+                value: loc,
+                label: WORK_LOCATION_LABELS[loc],
+              })),
+            ]}
+          >
+            <SelectTrigger className="w-full sm:w-40">
+              <SelectValue placeholder="Work location" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All locations</SelectItem>
+              {Object.values(WorkLocation).map((loc) => (
+                <SelectItem key={loc} value={loc}>
+                  {WORK_LOCATION_LABELS[loc]}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -137,6 +177,7 @@ export function EmployeeDirectory({
                   <TableHead>Employee</TableHead>
                   <TableHead>Designation</TableHead>
                   <TableHead>Department</TableHead>
+                  <TableHead>Location</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Availability</TableHead>
                 </TableRow>
@@ -158,6 +199,11 @@ export function EmployeeDirectory({
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {employee.department?.name ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {employee.workLocation
+                        ? WORK_LOCATION_LABELS[employee.workLocation as WorkLocation]
+                        : "—"}
                     </TableCell>
                     <TableCell>
                       <EmploymentStatusBadge status={employee.employmentStatus} />

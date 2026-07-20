@@ -22,6 +22,13 @@ import {
 } from "@/lib/validation/employees";
 import { createEmployeeAction, updateEmployeeAction } from "@/actions/employee-actions";
 import { useHrMasterDataOptions } from "@/components/hr/use-master-data-options";
+import { EmployeePicker } from "@/components/hr/employee-picker";
+import { WorkLocation, WORK_LOCATION_LABELS } from "@/lib/hr/constants";
+
+const WORK_LOCATION_OPTIONS = Object.values(WorkLocation).map((v) => ({
+  value: v,
+  label: WORK_LOCATION_LABELS[v],
+}));
 
 type EmployeeFormProps =
   | { mode: "create"; initialData?: never; employeeId?: never; version?: never }
@@ -60,6 +67,7 @@ export function EmployeeForm(props: EmployeeFormProps) {
     employmentTypeId: "",
     reportingManagerId: "",
     defaultShiftTypeId: "",
+    workLocation: "",
     ...(props.mode === "edit" ? props.initialData : {}),
   };
 
@@ -91,9 +99,14 @@ export function EmployeeForm(props: EmployeeFormProps) {
     }
 
     toast.success(props.mode === "edit" ? "Employee updated." : "Employee created.");
-    const employeeId =
-      props.mode === "edit" ? props.employeeId : (result.data as { id: string }).id;
-    router.push(`/employees/${employeeId}`);
+
+    if (props.mode === "edit") {
+      router.push(`/employees/${props.employeeId}`);
+      return;
+    }
+
+    const employeeId = (result.data as { id: string }).id;
+    router.push(`/employees/${employeeId}?onboarding=1`);
   }
 
   return (
@@ -157,6 +170,7 @@ export function EmployeeForm(props: EmployeeFormProps) {
               value={values.departmentId}
               onValueChange={(v) => v && setValue("departmentId", v, { shouldValidate: true })}
               disabled={isLoading}
+              items={departments.map((d) => ({ value: d.id, label: d.name }))}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select department" />
@@ -175,6 +189,7 @@ export function EmployeeForm(props: EmployeeFormProps) {
               value={values.designationId}
               onValueChange={(v) => v && setValue("designationId", v, { shouldValidate: true })}
               disabled={isLoading}
+              items={designations.map((d) => ({ value: d.id, label: d.name }))}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select designation" />
@@ -190,9 +205,10 @@ export function EmployeeForm(props: EmployeeFormProps) {
           </Field>
           <Field label="Employment grade">
             <Select
-              value={values.gradeId || undefined}
+              value={values.gradeId}
               onValueChange={(v) => setValue("gradeId", v ?? "")}
               disabled={isLoading}
+              items={grades.map((g) => ({ value: g.id, label: g.name }))}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select grade (optional)" />
@@ -211,6 +227,7 @@ export function EmployeeForm(props: EmployeeFormProps) {
               value={values.employmentTypeId}
               onValueChange={(v) => v && setValue("employmentTypeId", v, { shouldValidate: true })}
               disabled={isLoading}
+              items={employmentTypes.map((t) => ({ value: t.id, label: t.name }))}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select employment type" />
@@ -226,9 +243,10 @@ export function EmployeeForm(props: EmployeeFormProps) {
           </Field>
           <Field label="Default shift">
             <Select
-              value={values.defaultShiftTypeId || undefined}
+              value={values.defaultShiftTypeId}
               onValueChange={(v) => setValue("defaultShiftTypeId", v ?? "")}
               disabled={isLoading}
+              items={shiftTypes.map((s) => ({ value: s.id, label: s.name }))}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select shift (optional)" />
@@ -241,6 +259,32 @@ export function EmployeeForm(props: EmployeeFormProps) {
                 ))}
               </SelectContent>
             </Select>
+          </Field>
+          <Field label="Work location">
+            <Select
+              value={values.workLocation}
+              onValueChange={(v) => setValue("workLocation", (v as "OFFICE" | "SITE") ?? "")}
+              items={WORK_LOCATION_OPTIONS}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select work location (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                {WORK_LOCATION_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Reporting manager">
+            <EmployeePicker
+              value={values.reportingManagerId || null}
+              onChange={(id) => setValue("reportingManagerId", id ?? "")}
+              excludeId={props.mode === "edit" ? props.employeeId : undefined}
+              placeholder="Search employees (optional)…"
+            />
           </Field>
         </div>
       </section>

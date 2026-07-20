@@ -34,6 +34,7 @@ const DIRECTORY_SELECT = {
   designation: { select: { id: true, name: true } },
   reportingManager: { select: { id: true, firstName: true, lastName: true } },
   userId: true,
+  workLocation: true,
 } satisfies Prisma.EmployeeSelect;
 
 const MANAGER_EXTRA_SELECT = {
@@ -143,6 +144,7 @@ export async function listEmployees(
     ...(query.departmentId ? { departmentId: query.departmentId } : {}),
     ...(query.designationId ? { designationId: query.designationId } : {}),
     ...(query.employmentStatus ? { employmentStatus: query.employmentStatus } : {}),
+    ...(query.workLocation ? { workLocation: query.workLocation } : {}),
   };
 
   if (actor.role === UserRole.MANAGER && actorEmployeeId) {
@@ -241,6 +243,7 @@ export async function createEmployee(
         employmentTypeId: input.employmentTypeId,
         reportingManagerId: input.reportingManagerId || null,
         defaultShiftTypeId: input.defaultShiftTypeId || null,
+        workLocation: input.workLocation || null,
         createdBy: actor.id,
         updatedBy: actor.id,
       },
@@ -334,6 +337,7 @@ export async function updateEmployee(
         employmentTypeId: input.employmentTypeId,
         reportingManagerId: input.reportingManagerId || null,
         defaultShiftTypeId: input.defaultShiftTypeId || null,
+        workLocation: input.workLocation || null,
         updatedBy: actor.id,
         version: { increment: 1 },
       },

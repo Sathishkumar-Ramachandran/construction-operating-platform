@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ALL_EMPLOYMENT_STATUSES } from "@/lib/hr/constants";
+import { ALL_EMPLOYMENT_STATUSES, WorkLocation } from "@/lib/hr/constants";
 
 const optionalTrimmed = (max: number) =>
   z.string().trim().max(max).optional().or(z.literal(""));
@@ -31,6 +31,7 @@ export const createEmployeeSchema = z.object({
   employmentTypeId: z.uuid("Select an employment type."),
   reportingManagerId: z.uuid().optional().or(z.literal("")),
   defaultShiftTypeId: z.uuid().optional().or(z.literal("")),
+  workLocation: z.enum(Object.values(WorkLocation) as [string, ...string[]]).optional().or(z.literal("")),
 });
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
 
@@ -45,6 +46,7 @@ export const listEmployeesQuerySchema = z.object({
   departmentId: z.uuid().optional(),
   designationId: z.uuid().optional(),
   employmentStatus: z.enum(ALL_EMPLOYMENT_STATUSES).optional(),
+  workLocation: z.enum(Object.values(WorkLocation) as [string, ...string[]]).optional(),
   page: z.coerce.number().int().min(1).optional().default(1),
   pageSize: z.coerce.number().int().min(1).max(100).optional().default(20),
 });

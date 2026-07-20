@@ -30,6 +30,7 @@ model User {
   auditLogs           AuditLog[]           @relation("AuditLogUser")
   employee            Employee?
   passwordResetTokens PasswordResetToken[]
+  notifications       Notification[]
 
   @@map("users")
 }
@@ -327,6 +328,7 @@ model Employee {
   defaultSiteId          String? @map("default_site_id")
   defaultShiftTypeId     String? @map("default_shift_type_id")
   profilePhotoDocumentId String? @map("profile_photo_document_id")
+  workLocation           String? @map("work_location") // WorkLocation: OFFICE | SITE
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -356,6 +358,9 @@ model Employee {
   projectAssignments    EmployeeProjectAssignment[]    @relation("AssignmentEmployee")
   availabilityOverrides EmployeeAvailabilityOverride[]
   attendanceRecords     AttendanceRecord[]
+  leaveBalances         LeaveBalance[]
+  leaveRequests         LeaveRequest[]
+  assignedTasks         Task[]                         @relation("TaskAssignee")
 
   @@index([departmentId])
   @@index([reportingManagerId])
@@ -438,45 +443,168 @@ model EmployeeStatusHistory {
 }
 
 // ---------------------------------------------------------------------------
-// HRMS — Minimal project/site + allocation
-// (Deliberately minimal: full Project Management is a later phase. A future
-// module should extend these tables, not replace them.)
+// Project Management — full lifecycle (Creation/Team/Phases/Inventory/Closure)
+// and the 8-stage per-site execution workflow. Material/Equipment/Stock
+// catalogs remain deliberately out of scope here — that is the later ERP
+// phase's job; ProjectResourceRequest below is a lightweight request only.
 // ---------------------------------------------------------------------------
 
 model Project {
-  id         String    @id @default(uuid())
-  code       String    @unique
-  name       String
-  clientName String?   @map("client_name")
-  status     String    @default("ACTIVE")
-  startDate  DateTime? @map("start_date")
-  endDate    DateTime? @map("end_date")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  id              String    @id @default(uuid())
+  code            String    @unique
+  name            String
+  clientName      String?   @map("client_name")
+  description     String?
+  address         String?
+  estimatedBudget Decimal?  @map("estimated_budget") @db.Decimal(12, 2)
+  status          String    @default("DRAFT")
+  startDate       DateTime? @map("start_date")
+  endDate         DateTime? @map("end_date")
+  createdBy       String?   @map("created_by")
+  closedAt        DateTime? @map("closed_at")
+  closedBy        String?   @map("closed_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   sites               Site[]
   assignments         EmployeeProjectAssignment[]
   defaultForEmployees Employee[]                  @relation("EmployeeDefaultProject")
+  resourceRequests    ProjectResourceRequest[]
+  tasks               Task[]
 
   @@map("projects")
 }
 
 model Site {
-  id        String   @id @default(uuid())
-  projectId String   @map("project_id")
-  code      String
-  name      String
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id                        String   @id @default(uuid())
+  projectId                 String   @map("project_id")
+  code                       String
+  name                       String
+  isActive                   Boolean  @default(true) @map("is_active")
+  currentStage               String   @default("PRE_START_PLANNING") @map("current_stage")
+  currentStageStartedAt      DateTime @default(now()) @map("current_stage_started_at")
+  handoverApprovalRequestId  String?  @map("handover_approval_request_id")
+  createdAt                  DateTime @default(now()) @map("created_at")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
 
   project             Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignments         EmployeeProjectAssignment[]
   defaultForEmployees Employee[]                  @relation("EmployeeDefaultSite")
   attendanceRecords   AttendanceRecord[]
+  stageHistory        SiteStageHistory[]
+  resourceRequests    ProjectResourceRequest[]
+  tasks               Task[]
+  checklistItems      SiteStageChecklistItem[]
 
   @@unique([projectId, code])
   @@map("sites")
+}
+
+/// Per-site completion state of the fixed SOP checklist for the site's
+/// *current* stage (SITE_STAGE_CHECKLISTS in lib/projects/constants.ts).
+/// Rows only exist for items someone has checked — an unchecked item simply
+/// has no row (see getChecklistForSite). itemIndex is only meaningful for
+/// the stage it was written under; once a site advances past a stage, its
+/// rows for that stage are left in place as a historical record but are no
+/// longer editable (see SITE_STAGE_CHECKLIST_LOCKED).
+model SiteStageChecklistItem {
+  id         String    @id @default(uuid())
+  siteId     String    @map("site_id")
+  stage      String
+  itemIndex  Int       @map("item_index")
+  isChecked  Boolean   @default(false) @map("is_checked")
+  checkedBy  String?   @map("checked_by")
+  checkedAt  DateTime? @map("checked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, stage, itemIndex])
+  @@map("site_stage_checklist_items")
+}
+
+/// Full audit/reporting trail of a site's 8-stage execution workflow.
+/// `changedBy` is null for HANDOVER_APPROVED/REJECTED rows, which are
+/// written from inside the generic approval engine's onApproved/onRejected
+/// hook (only receives an ApprovalRequestSummary, no deciding-actor id) —
+/// attribution for those two rows lives on the linked ApprovalStep instead.
+model SiteStageHistory {
+  id                String   @id @default(uuid())
+  siteId            String   @map("site_id")
+  previousStage     String?  @map("previous_stage")
+  newStage          String   @map("new_stage")
+  trigger           String   @default("SELF_ADVANCE")
+  notes             String?
+  changedBy         String?  @map("changed_by")
+  approvalRequestId String?  @map("approval_request_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId, createdAt])
+  @@map("site_stage_history")
+}
+
+/// Lightweight equipment/material request tied to a project (and optionally
+/// a site) — free text, no catalog. Routed through the generic Approval
+/// Engine's EQUIPMENT_REQUEST module. Full stock/catalog/supplier tracking
+/// is deliberately deferred to the later ERP phase.
+model ProjectResourceRequest {
+  id                    String    @id @default(uuid())
+  projectId             String    @map("project_id")
+  siteId                String?   @map("site_id")
+  materialId            String?   @map("material_id")
+  /// Denormalized snapshot of material.name at request time (display
+  /// resilience if the catalog entry is later renamed/deactivated) — no
+  /// longer user-typed free text; the service sets this from the resolved
+  /// Material on create. Nullable materialId only exists for schema
+  /// evolution safety; the create flow requires a real material.
+  itemDescription       String    @map("item_description")
+  quantity              Decimal   @db.Decimal(10, 2)
+  unit                  String
+  neededByDate          DateTime? @map("needed_by_date")
+  notes                 String?
+  status                String    @default("PENDING")
+  requestedByUserId     String    @map("requested_by_user_id")
+  requestedByEmployeeId String?   @map("requested_by_employee_id")
+  approvalRequestId     String?   @map("approval_request_id")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  site     Site?     @relation(fields: [siteId], references: [id])
+  material Material? @relation(fields: [materialId], references: [id])
+
+  @@index([projectId, status])
+  @@map("project_resource_requests")
+}
+
+/// Lightweight per-project work item, assigned to exactly one team member.
+/// Deliberately simple (no subtasks, no reassignment, no checklist) — the
+/// unit a Team Member's restricted project view is scoped around. Retired
+/// via CANCELLED, never hard-deleted, matching the platform-wide convention.
+model Task {
+  id                   String    @id @default(uuid())
+  projectId            String    @map("project_id")
+  siteId               String?   @map("site_id")
+  title                String
+  description          String?
+  status               String    @default("TODO")
+  assignedToEmployeeId String    @map("assigned_to_employee_id")
+  dueDate              DateTime? @map("due_date")
+  createdBy            String    @map("created_by")
+  completedAt          DateTime? @map("completed_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  site     Site?    @relation(fields: [siteId], references: [id])
+  assignee Employee @relation("TaskAssignee", fields: [assignedToEmployeeId], references: [id])
+
+  @@index([projectId, status])
+  @@index([assignedToEmployeeId, status])
+  @@map("tasks")
 }
 
 model EmployeeProjectAssignment {
@@ -668,4 +796,258 @@ model AttendanceRecord {
   @@index([employeeId, date])
   @@index([date, status])
   @@map("attendance_records")
+}
+
+// ---------------------------------------------------------------------------
+// HRMS — Leave
+// ---------------------------------------------------------------------------
+
+model LeaveType {
+  id                     String   @id @default(uuid())
+  code                   String   @unique
+  name                   String
+  defaultEntitlementDays Decimal  @map("default_entitlement_days") @db.Decimal(5, 1)
+  isPaid                 Boolean  @default(true) @map("is_paid")
+  isActive               Boolean  @default(true) @map("is_active")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  balances LeaveBalance[]
+  requests LeaveRequest[]
+
+  @@map("leave_types")
+}
+
+/// Only the HR-adjustable inputs are stored; "used" is always computed live
+/// by summing APPROVED LeaveRequest.dayCount for the type/year (same
+/// "derive, don't duplicate" precedent as WorkforceAvailability/Attendance)
+/// — avoids the stored-used-count ever drifting from actual approved requests.
+model LeaveBalance {
+  id                 String   @id @default(uuid())
+  employeeId         String   @map("employee_id")
+  leaveTypeId        String   @map("leave_type_id")
+  year               Int
+  entitledDays       Decimal  @map("entitled_days") @db.Decimal(5, 1)
+  carriedForwardDays Decimal  @default(0) @map("carried_forward_days") @db.Decimal(5, 1)
+  updatedBy          String?  @map("updated_by")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@map("leave_balances")
+}
+
+model LeaveRequest {
+  id                String   @id @default(uuid())
+  employeeId        String   @map("employee_id")
+  leaveTypeId       String   @map("leave_type_id")
+  startDate         DateTime @map("start_date") @db.Date
+  endDate           DateTime @map("end_date") @db.Date
+  startHalfDay      Boolean  @default(false) @map("start_half_day")
+  endHalfDay        Boolean  @default(false) @map("end_half_day")
+  dayCount          Decimal  @map("day_count") @db.Decimal(5, 1)
+  reason            String?
+  status            String   @default("PENDING")
+  approvalRequestId String?  @unique @map("approval_request_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@index([employeeId, status])
+  @@index([leaveTypeId])
+  @@map("leave_requests")
+}
+
+// ---------------------------------------------------------------------------
+// Approvals — generic, module-agnostic approval-request engine
+// ---------------------------------------------------------------------------
+
+/// Entity-agnostic approval request, reused by every module that needs a
+/// request -> approve/reject flow (Leave, Equipment/Material requests,
+/// Project stage-gates, Purchase requests, ...) instead of each module
+/// building its own. `module`/`entityType`/`entityId` identify what's being
+/// approved (FK-by-convention, mirrors AuditLog.entityId — no direct Prisma
+/// relation since the target model varies per module); `payload` carries a
+/// module-specific snapshot used by the module's registered handler
+/// (see lib/services/approval-registry.ts) to resolve approvers and act on
+/// the decision. See lib/services/approval-service.ts for the full contract.
+model ApprovalRequest {
+  id                    String   @id @default(uuid())
+  module                String // e.g. "LEAVE" | "EQUIPMENT_REQUEST" | "PROJECT_STAGE_GATE"
+  entityType            String   @map("entity_type") // e.g. "LeaveRequest"
+  entityId              String   @map("entity_id")
+  requestedBy           String   @map("requested_by") // User.id
+  requestedByEmployeeId String?  @map("requested_by_employee_id")
+  status                String   @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  currentStepOrder      Int      @default(1) @map("current_step_order")
+  payload               Json
+  reason                String?
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  version               Int      @default(1)
+
+  steps ApprovalStep[]
+
+  @@index([module, entityType, entityId])
+  @@index([status])
+  @@index([requestedBy])
+  @@map("approval_requests")
+}
+
+/// One row per decision step in an ApprovalRequest's chain. Most consumers
+/// today only need a single step, but this stays a child table (rather than
+/// flattening approver/decision fields onto ApprovalRequest) so a future
+/// dual-sign-off requirement (e.g. high-value purchase approvals) doesn't
+/// require redesigning the table under live data.
+model ApprovalStep {
+  id                String    @id @default(uuid())
+  approvalRequestId String    @map("approval_request_id")
+  stepOrder         Int       @map("step_order")
+  approverUserId    String?   @map("approver_user_id") // resolved specific approver, if known
+  approverRole      String?   @map("approver_role") // OR a role-pool ("ADMIN"), resolved at decide-time
+  status            String    @default("PENDING") // PENDING | APPROVED | REJECTED | SKIPPED
+  decisionNotes     String?   @map("decision_notes")
+  decidedBy         String?   @map("decided_by")
+  decidedAt         DateTime? @map("decided_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  approvalRequest ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([approvalRequestId, stepOrder])
+  @@index([approverUserId, status])
+  @@map("approval_steps")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+/// Minimal in-app notification, delivered today only by the approval engine
+/// (see approval-service.ts's decideApprovalStep -> notifyUsers). Email
+/// delivery is deferred behind a pluggable channel interface — this table
+/// is the in-app channel only.
+model Notification {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  type       String // e.g. "APPROVAL_DECIDED"
+  title      String
+  body       String
+  entityType String?   @map("entity_type")
+  entityId   String?   @map("entity_id")
+  isRead     Boolean   @default(false) @map("is_read")
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// ERP — Material/Equipment catalog, Suppliers, Stock (central pool only,
+// per the locked 2026-07-19 decision — no per-site/warehouse dimension).
+// Purchase Orders and the ProjectResourceRequest->Material integration are
+// later phases; this is the catalog + stock-ledger foundation they build on.
+// ---------------------------------------------------------------------------
+
+model MaterialCategory {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  materials Material[]
+
+  @@map("material_categories")
+}
+
+/// Unified catalog for materials, equipment, and services — one model
+/// rather than near-duplicate Material/Equipment tables, distinguished by
+/// `type`. `referenceCost` is a default/last-known unit cost used for
+/// budgeting and quotations, not an authoritative price list.
+model Material {
+  id            String   @id @default(uuid())
+  code          String   @unique
+  name          String
+  type          String   @default("MATERIAL") // MATERIAL | EQUIPMENT | SERVICE
+  categoryId    String?  @map("category_id")
+  unit          String
+  referenceCost Decimal? @map("reference_cost") @db.Decimal(12, 2)
+  reorderLevel  Decimal? @map("reorder_level") @db.Decimal(12, 2)
+  isActive      Boolean  @default(true) @map("is_active")
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  category          MaterialCategory?        @relation(fields: [categoryId], references: [id])
+  stockLevel        StockLevel?
+  stockTransactions StockTransaction[]
+  resourceRequests  ProjectResourceRequest[]
+
+  @@map("materials")
+}
+
+model Supplier {
+  id                String   @id @default(uuid())
+  code              String   @unique
+  name              String
+  contactPersonName String?  @map("contact_person_name")
+  phone             String?
+  email             String?
+  address           String?
+  notes             String?
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("suppliers")
+}
+
+/// One running balance per material — central pool only (no warehouse/site
+/// dimension), per the locked decision. Maintained transactionally alongside
+/// each StockTransaction insert; StockTransaction is the source of truth,
+/// this is a derived-but-stored total for cheap reads.
+model StockLevel {
+  id             String   @id @default(uuid())
+  materialId     String   @unique @map("material_id")
+  quantityOnHand Decimal  @default(0) @db.Decimal(14, 2) @map("quantity_on_hand")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@map("stock_levels")
+}
+
+/// Immutable stock movement ledger — never updated or deleted, matching the
+/// SiteStageHistory precedent (audit trail, not just current-state). Allowed
+/// to take StockLevel negative (backorder) per the locked decision — never
+/// blocked at the transaction layer. `createdBy` is null for engine-driven
+/// rows (e.g. an EQUIPMENT_REQUEST approval issuing stock) — same reasoning
+/// as SiteStageHistory.changedBy: the approval-registry onApproved hook only
+/// receives an ApprovalRequestSummary, no deciding-actor id; attribution for
+/// those rows lives on the linked ApprovalStep instead.
+model StockTransaction {
+  id            String   @id @default(uuid())
+  materialId    String   @map("material_id")
+  type          String // RECEIPT | ISSUE | ADJUSTMENT
+  quantity      Decimal  @db.Decimal(14, 2)
+  referenceType String?  @map("reference_type") // PURCHASE_ORDER | PROJECT_RESOURCE_REQUEST | MANUAL
+  referenceId   String?  @map("reference_id")
+  notes         String?
+  createdBy     String?  @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  material Material @relation(fields: [materialId], references: [id])
+
+  @@index([materialId, createdAt])
+  @@map("stock_transactions")
 }

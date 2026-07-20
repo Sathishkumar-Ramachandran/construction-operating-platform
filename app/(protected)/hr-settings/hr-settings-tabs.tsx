@@ -10,6 +10,7 @@ import { CertificationTypesSettings } from "@/app/(protected)/hr-settings/certif
 import { ProjectsSettings } from "@/app/(protected)/hr-settings/projects/projects-settings";
 import { ShiftTypesSettings } from "@/app/(protected)/hr-settings/shift-types/shift-types-settings";
 import { HolidaysSettings } from "@/app/(protected)/hr-settings/holidays/holidays-settings";
+import { LeaveTypesSettings } from "@/app/(protected)/hr-settings/leave-types/leave-types-settings";
 import { SimpleMasterDataSettings } from "@/components/hr/simple-master-data-settings";
 import {
   saveEmploymentTypeAction,
@@ -22,6 +23,7 @@ const MASTER_DATA_TABS = [
   { value: "departments", label: "Departments" },
   { value: "designations", label: "Designations" },
   { value: "grades", label: "Employment Grades" },
+  { value: "leave-types", label: "Leave Types" },
   { value: "employment-types", label: "Employment Types" },
   { value: "project-roles", label: "Project Roles" },
   { value: "document-types", label: "Document Types" },
@@ -78,6 +80,9 @@ export function HrSettingsTabs({
           </TabsContent>
           <TabsContent value="grades" className="pt-4">
             <GradesSettings />
+          </TabsContent>
+          <TabsContent value="leave-types" className="pt-4">
+            <LeaveTypesSettings />
           </TabsContent>
           <TabsContent value="employment-types" className="pt-4">
             <SimpleMasterDataSettings

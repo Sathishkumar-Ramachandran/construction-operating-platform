@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requirePermission } from "@/lib/auth/guards";
+import { requirePermission, requireAnyPermission } from "@/lib/auth/guards";
 import { PERMISSIONS } from "@/lib/authorization/permissions";
 import { createAssignmentSchema, endAssignmentSchema, availabilityOverrideSchema } from "@/lib/validation/allocation";
 import { createAssignment, endAssignment } from "@/lib/services/employee-allocation-service";
@@ -10,7 +10,10 @@ import { isAppError } from "@/lib/errors";
 import type { ActionResult } from "@/actions/user-actions";
 
 export async function createAssignmentAction(input: unknown): Promise<ActionResult> {
-  const actor = await requirePermission(PERMISSIONS.HR_ALLOCATION_MANAGE.code);
+  const actor = await requireAnyPermission([
+    PERMISSIONS.HR_ALLOCATION_MANAGE.code,
+    PERMISSIONS.PROJECTS_TEAM_MANAGE.code,
+  ]);
   const parsed = createAssignmentSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
@@ -19,6 +22,7 @@ export async function createAssignmentAction(input: unknown): Promise<ActionResu
     const assignment = await createAssignment(actor, parsed.data);
     revalidatePath(`/employees/${parsed.data.employeeId}`);
     revalidatePath("/employees/availability");
+    revalidatePath(`/projects/${parsed.data.projectId}`);
     return { ok: true, data: assignment };
   } catch (error) {
     if (isAppError(error)) return { ok: false, message: error.message };
@@ -27,7 +31,10 @@ export async function createAssignmentAction(input: unknown): Promise<ActionResu
 }
 
 export async function endAssignmentAction(input: unknown): Promise<ActionResult> {
-  const actor = await requirePermission(PERMISSIONS.HR_ALLOCATION_MANAGE.code);
+  const actor = await requireAnyPermission([
+    PERMISSIONS.HR_ALLOCATION_MANAGE.code,
+    PERMISSIONS.PROJECTS_TEAM_MANAGE.code,
+  ]);
   const parsed = endAssignmentSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
@@ -35,6 +42,7 @@ export async function endAssignmentAction(input: unknown): Promise<ActionResult>
   try {
     const assignment = await endAssignment(actor, parsed.data);
     revalidatePath("/employees/availability");
+    revalidatePath(`/projects/${assignment.projectId}`);
     return { ok: true, data: assignment };
   } catch (error) {
     if (isAppError(error)) return { ok: false, message: error.message };

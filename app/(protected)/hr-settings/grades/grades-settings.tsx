@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,11 +13,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { MasterDataPage } from "@/components/hr/master-data-page";
+import { MasterDataPage, type MasterDataRow } from "@/components/hr/master-data-page";
 import { saveEmploymentGradeAction, setEmploymentGradeActiveAction } from "@/actions/hr-master-data-actions";
 
 export function GradesSettings() {
   const [createOpen, setCreateOpen] = useState(false);
+  const [editRow, setEditRow] = useState<MasterDataRow | null>(null);
 
   return (
     <MasterDataPage
@@ -32,23 +33,43 @@ export function GradesSettings() {
           <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
             <Plus className="size-4" aria-hidden /> New grade
           </Button>
-          {createOpen ? <CreateGradeDialog onOpenChange={setCreateOpen} onCreated={onCreated} /> : null}
+          {createOpen ? <SaveGradeDialog onOpenChange={setCreateOpen} onSaved={onCreated} /> : null}
+        </>
+      )}
+      renderRowActions={(row, onUpdated) => (
+        <>
+          <Button variant="outline" size="sm" onClick={() => setEditRow(row)} className="gap-1.5">
+            <Pencil className="size-3.5" aria-hidden /> Edit
+          </Button>
+          {editRow?.id === row.id ? (
+            <SaveGradeDialog
+              initial={{ id: row.id, code: row.code, name: row.name, rank: String(row.rank ?? "1") }}
+              onOpenChange={(open) => !open && setEditRow(null)}
+              onSaved={() => {
+                setEditRow(null);
+                onUpdated();
+              }}
+            />
+          ) : null}
         </>
       )}
     />
   );
 }
 
-function CreateGradeDialog({
+function SaveGradeDialog({
+  initial,
   onOpenChange,
-  onCreated,
+  onSaved,
 }: {
+  initial?: { id: string; code: string; name: string; rank: string };
   onOpenChange: (open: boolean) => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }) {
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
-  const [rank, setRank] = useState("1");
+  const isEdit = Boolean(initial?.id);
+  const [code, setCode] = useState(initial?.code ?? "");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [rank, setRank] = useState(initial?.rank ?? "1");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit() {
@@ -57,22 +78,27 @@ function CreateGradeDialog({
       return;
     }
     setSubmitting(true);
-    const result = await saveEmploymentGradeAction({ code: code.toUpperCase(), name, rank: Number(rank) });
+    const result = await saveEmploymentGradeAction({
+      id: initial?.id,
+      code: code.toUpperCase(),
+      name,
+      rank: Number(rank),
+    });
     setSubmitting(false);
     if (!result.ok) {
       toast.error(result.message);
       return;
     }
-    toast.success("Grade created.");
+    toast.success(`Grade ${isEdit ? "updated" : "created"}.`);
     onOpenChange(false);
-    onCreated();
+    onSaved();
   }
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New employment grade</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit employment grade" : "New employment grade"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
@@ -93,7 +119,7 @@ function CreateGradeDialog({
             Cancel
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? "Creating…" : "Create"}
+            {submitting ? "Saving…" : isEdit ? "Save changes" : "Create"}
           </Button>
         </DialogFooter>
       </DialogContent>

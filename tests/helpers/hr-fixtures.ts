@@ -7,6 +7,8 @@ export const createdDesignationIds: string[] = [];
 export const createdEmploymentTypeIds: string[] = [];
 export const createdEmployeeIds: string[] = [];
 export const createdProjectIds: string[] = [];
+export const createdLeaveTypeIds: string[] = [];
+export const createdMaterialIds: string[] = [];
 
 let sharedMasterDataPromise: Promise<{
   departmentId: string;
@@ -60,6 +62,22 @@ export async function buildCreateEmployeeInput(
   };
 }
 
+export async function createTestLeaveType(
+  overrides: { defaultEntitlementDays?: number; isPaid?: boolean } = {}
+) {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const leaveType = await db.leaveType.create({
+    data: {
+      code: `VITEST_LEAVE_${suffix.toUpperCase()}`,
+      name: `Vitest Leave ${suffix}`,
+      defaultEntitlementDays: overrides.defaultEntitlementDays ?? 14,
+      isPaid: overrides.isPaid ?? true,
+    },
+  });
+  createdLeaveTypeIds.push(leaveType.id);
+  return leaveType;
+}
+
 export async function createTestProject(name: string) {
   const suffix = Math.random().toString(36).slice(2, 8);
   const project = await db.project.create({
@@ -69,11 +87,74 @@ export async function createTestProject(name: string) {
   return project;
 }
 
+export async function createTestSite(
+  projectId: string,
+  overrides: { name?: string; currentStage?: string } = {}
+) {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  return db.site.create({
+    data: {
+      projectId,
+      code: `VITEST-SITE-${suffix}`,
+      name: overrides.name ?? `Vitest Site ${suffix}`,
+      currentStage: overrides.currentStage ?? "PRE_START_PLANNING",
+    },
+  });
+}
+
+export async function createTestTask(
+  projectId: string,
+  assignedToEmployeeId: string,
+  overrides: { siteId?: string; title?: string; status?: string } = {}
+) {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  return db.task.create({
+    data: {
+      projectId,
+      siteId: overrides.siteId ?? null,
+      title: overrides.title ?? `Vitest Task ${suffix}`,
+      assignedToEmployeeId,
+      status: overrides.status ?? "TODO",
+      createdBy: assignedToEmployeeId,
+    },
+  });
+}
+
+export async function createTestMaterial(overrides: { unit?: string; quantityOnHand?: number } = {}) {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const material = await db.material.create({
+    data: {
+      code: `VITEST-MAT-${suffix}`,
+      name: `Vitest Material ${suffix}`,
+      unit: overrides.unit ?? "litres",
+    },
+  });
+  createdMaterialIds.push(material.id);
+  await db.stockLevel.create({
+    data: { materialId: material.id, quantityOnHand: overrides.quantityOnHand ?? 1000 },
+  });
+  return material;
+}
+
 export async function cleanupHrFixtures() {
   if (createdProjectIds.length > 0) {
     await db.employeeProjectAssignment.deleteMany({ where: { projectId: { in: createdProjectIds } } });
+    // Must run before site.deleteMany below — ProjectResourceRequest.siteId
+    // and Task.siteId have no cascade, so a surviving row pointing at a site
+    // would block that site's delete otherwise (their projectId FKs do
+    // cascade, but only once the Project row itself is deleted, which is
+    // ordered last here). Also must run before material cleanup below, for
+    // the same reason (ProjectResourceRequest.materialId has no cascade).
+    await db.projectResourceRequest.deleteMany({ where: { projectId: { in: createdProjectIds } } });
+    await db.task.deleteMany({ where: { projectId: { in: createdProjectIds } } });
+    await db.siteStageHistory.deleteMany({ where: { site: { projectId: { in: createdProjectIds } } } });
     await db.site.deleteMany({ where: { projectId: { in: createdProjectIds } } });
     await db.project.deleteMany({ where: { id: { in: createdProjectIds } } });
+  }
+  if (createdMaterialIds.length > 0) {
+    await db.stockTransaction.deleteMany({ where: { materialId: { in: createdMaterialIds } } });
+    await db.stockLevel.deleteMany({ where: { materialId: { in: createdMaterialIds } } });
+    await db.material.deleteMany({ where: { id: { in: createdMaterialIds } } });
   }
   if (createdEmployeeIds.length > 0) {
     await db.employeeAvailabilityOverride.deleteMany({ where: { employeeId: { in: createdEmployeeIds } } });
@@ -92,5 +173,11 @@ export async function cleanupHrFixtures() {
   }
   if (createdEmploymentTypeIds.length > 0) {
     await db.employmentType.deleteMany({ where: { id: { in: createdEmploymentTypeIds } } });
+  }
+  // Must run after employee deletion above — LeaveBalance/LeaveRequest rows
+  // cascade-delete with their Employee, but hold a Restrict-by-default FK to
+  // LeaveType, so any surviving one would block this delete otherwise.
+  if (createdLeaveTypeIds.length > 0) {
+    await db.leaveType.deleteMany({ where: { id: { in: createdLeaveTypeIds } } });
   }
 }

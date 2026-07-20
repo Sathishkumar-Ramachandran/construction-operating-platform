@@ -1,7 +1,9 @@
 import { db } from "@/lib/db";
 import { AppError, ErrorCode } from "@/lib/errors";
 import { AssignmentStatus, EmploymentStatus, INACTIVE_EMPLOYMENT_STATUSES } from "@/lib/hr/constants";
+import { ProjectStatus } from "@/lib/projects/constants";
 import { AuditAction, recordAuditLog } from "@/lib/services/audit-service";
+import { assertActorCanAccessProject } from "@/lib/services/project-service";
 import type { CreateAssignmentInput, EndAssignmentInput } from "@/lib/validation/allocation";
 import type { AuthenticatedUser } from "@/types/auth";
 import type { Prisma } from "@/generated/prisma/client";
@@ -18,6 +20,74 @@ export async function listAssignmentsForEmployee(employeeId: string) {
     },
     orderBy: { startDate: "desc" },
   });
+}
+
+export async function listAssignmentsForProject(
+  projectId: string,
+  options: { siteId?: string; status?: string } = {}
+) {
+  return db.employeeProjectAssignment.findMany({
+    where: {
+      projectId,
+      ...(options.siteId ? { siteId: options.siteId } : {}),
+      ...(options.status ? { status: options.status } : {}),
+    },
+    include: {
+      employee: { select: { id: true, firstName: true, lastName: true, preferredName: true } },
+      site: { select: { id: true, code: true, name: true } },
+      projectRole: { select: { id: true, code: true, name: true } },
+    },
+    orderBy: { startDate: "desc" },
+  });
+}
+
+/** Relationship-scoped authorization primitive: is this employee currently
+ * ACTIVE-assigned to this specific site? Same shape as isInReportingChain
+ * (org-hierarchy-service.ts) — a relationship check, not a flat role/
+ * permission check. Used to gate self-advancing a site's execution stage. */
+export async function isActivelyAssignedToSite(
+  employeeId: string,
+  siteId: string
+): Promise<boolean> {
+  const match = await db.employeeProjectAssignment.findFirst({
+    where: { employeeId, siteId, status: AssignmentStatus.ACTIVE },
+    select: { id: true },
+  });
+  return match !== null;
+}
+
+/** Same shape as isActivelyAssignedToSite, at the project level — used to
+ * scope Manager/Team Member project visibility and mutations. */
+export async function isActivelyAssignedToProject(
+  employeeId: string,
+  projectId: string
+): Promise<boolean> {
+  const match = await db.employeeProjectAssignment.findFirst({
+    where: { employeeId, projectId, status: AssignmentStatus.ACTIVE },
+    select: { id: true },
+  });
+  return match !== null;
+}
+
+/** Do these two employees share an active assignment to the same project?
+ * Used to scope a Manager marking attendance for a project teammate — not
+ * a reporting-chain check (isInReportingChain), a project-membership one. */
+export async function isActivelyAssignedToSameProject(
+  employeeIdA: string,
+  employeeIdB: string
+): Promise<boolean> {
+  const [projectsA, projectsB] = await Promise.all([
+    db.employeeProjectAssignment.findMany({
+      where: { employeeId: employeeIdA, status: AssignmentStatus.ACTIVE },
+      select: { projectId: true },
+    }),
+    db.employeeProjectAssignment.findMany({
+      where: { employeeId: employeeIdB, status: AssignmentStatus.ACTIVE },
+      select: { projectId: true },
+    }),
+  ]);
+  const setA = new Set(projectsA.map((p) => p.projectId));
+  return projectsB.some((p) => setA.has(p.projectId));
 }
 
 async function getActiveAllocationTotal(
@@ -40,6 +110,8 @@ export async function createAssignment(
   input: CreateAssignmentInput,
   meta: ActorMeta = {}
 ) {
+  await assertActorCanAccessProject(actor, input.projectId);
+
   const employee = await db.employee.findUnique({
     where: { id: input.employeeId },
     select: { id: true, employmentStatus: true },
@@ -50,7 +122,7 @@ export async function createAssignment(
   }
 
   const project = await db.project.findUnique({ where: { id: input.projectId } });
-  if (!project || project.status !== "ACTIVE") {
+  if (!project || project.status !== ProjectStatus.ACTIVE) {
     throw new AppError(ErrorCode.VALIDATION_ERROR, "Selected project is not active.");
   }
 

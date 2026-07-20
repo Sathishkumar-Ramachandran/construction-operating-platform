@@ -1,5 +1,4 @@
-import { requireApiPermission } from "@/lib/auth/guards";
-import { PERMISSIONS } from "@/lib/authorization/permissions";
+import { requireApiUser } from "@/lib/auth/guards";
 import * as masterData from "@/lib/services/hr-master-data-service";
 
 const LISTERS = {
@@ -12,6 +11,7 @@ const LISTERS = {
   "certification-types": masterData.listCertificationTypes,
   "shift-types": masterData.listShiftTypes,
   holidays: masterData.listHolidays,
+  "leave-types": masterData.listLeaveTypes,
 } as const;
 
 type MasterDataType = keyof typeof LISTERS;
@@ -24,7 +24,11 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ type: string }> }
 ) {
-  const guard = await requireApiPermission(PERMISSIONS.HR_MASTER_DATA_MANAGE.code);
+  // Any authenticated user, not just HR.MASTER_DATA.MANAGE holders — these
+  // lists are just dropdown labels (department/leave-type names, codes,
+  // etc.), never sensitive data, and self-service flows (e.g. requesting
+  // leave) need to populate them for every role, not only HR/Admin.
+  const guard = await requireApiUser();
   if (guard.response) return guard.response;
 
   const { type } = await params;

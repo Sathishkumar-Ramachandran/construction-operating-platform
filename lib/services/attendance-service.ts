@@ -10,6 +10,7 @@ import {
 import { AuditAction, recordAuditLog } from "@/lib/services/audit-service";
 import { getActorEmployeeId, listEmployees } from "@/lib/services/employee-service";
 import { isInReportingChain } from "@/lib/services/org-hierarchy-service";
+import { isActivelyAssignedToSameProject } from "@/lib/services/employee-allocation-service";
 import { hasPermission } from "@/lib/services/authorization-service";
 import { employeeDisplayName } from "@/lib/hr/employee-display";
 import { PERMISSIONS } from "@/lib/authorization/permissions";
@@ -93,6 +94,37 @@ async function assertCanViewEmployeeAttendance(
     const managesTarget = await isInReportingChain(employeeId, actorEmployeeId);
     if (!managesTarget) throw new AppError(ErrorCode.AUTH_PERMISSION_DENIED);
   }
+}
+
+/** Write-path authorization for correctAttendance — narrower than the
+ * view-path check above. HR/Admin (HR_ATTENDANCE_MANAGE) stay org-wide;
+ * a Manager may only mark a Team Member they share an active project
+ * assignment with, never a fellow Manager/Admin/HR ("for Managers, HR
+ * will put attendance"). Project-membership-scoped, not reporting-chain —
+ * a Manager marks site workers on their project, not their org reportees. */
+async function assertCanMarkAttendanceForEmployee(
+  actor: AuthenticatedUser,
+  targetEmployeeId: string
+): Promise<void> {
+  if (actor.role === UserRole.SUPER_ADMIN) return;
+  if (await hasPermission(actor, PERMISSIONS.HR_ATTENDANCE_MANAGE.code)) return;
+  if (actor.role !== UserRole.MANAGER) {
+    throw new AppError(ErrorCode.ATTENDANCE_MARK_NOT_AUTHORIZED);
+  }
+
+  const actorEmployeeId = await getActorEmployeeId(actor.id);
+  if (!actorEmployeeId) throw new AppError(ErrorCode.ATTENDANCE_MARK_NOT_AUTHORIZED);
+
+  const target = await db.employee.findUnique({
+    where: { id: targetEmployeeId },
+    select: { user: { select: { role: { select: { code: true } } } } },
+  });
+  if (target?.user?.role && target.user.role.code !== UserRole.TEAM_MEMBER) {
+    throw new AppError(ErrorCode.ATTENDANCE_MARK_NOT_AUTHORIZED);
+  }
+
+  const sameProject = await isActivelyAssignedToSameProject(actorEmployeeId, targetEmployeeId);
+  if (!sameProject) throw new AppError(ErrorCode.ATTENDANCE_MARK_NOT_AUTHORIZED);
 }
 
 export async function checkIn(actor: AuthenticatedUser, meta: ActorMeta = {}) {
@@ -361,12 +393,15 @@ export async function correctAttendance(
   input: CorrectAttendanceInput,
   meta: ActorMeta = {}
 ) {
+  await assertCanMarkAttendanceForEmployee(actor, input.employeeId);
+
   const employee = await db.employee.findUnique({
     where: { id: input.employeeId },
     select: { id: true, defaultSiteId: true, defaultShiftTypeId: true },
   });
   if (!employee) throw new AppError(ErrorCode.EMPLOYEE_NOT_FOUND);
 
+  const source = actor.role === UserRole.MANAGER ? AttendanceSource.MANAGER_MANUAL : AttendanceSource.HR_MANUAL;
   const date = startOfDay(new Date(input.date));
   const checkInAt = input.checkInTime ? combineDateAndTime(date, input.checkInTime) : null;
   const checkOutAt = input.checkOutTime ? combineDateAndTime(date, input.checkOutTime) : null;
@@ -386,7 +421,7 @@ export async function correctAttendance(
         checkInAt,
         checkOutAt,
         status: input.status,
-        source: AttendanceSource.HR_MANUAL,
+        source,
         notes: input.notes,
         createdBy: actor.id,
         updatedBy: actor.id,
@@ -395,7 +430,7 @@ export async function correctAttendance(
         checkInAt,
         checkOutAt,
         status: input.status,
-        source: AttendanceSource.HR_MANUAL,
+        source,
         notes: input.notes,
         updatedBy: actor.id,
       },

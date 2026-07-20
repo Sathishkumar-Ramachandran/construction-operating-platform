@@ -1,9 +1,10 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Search, Bell } from "lucide-react";
+import { Search } from "lucide-react";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { UserMenu } from "@/components/layout/user-menu";
+import { NotificationBell } from "@/components/layout/notification-bell";
 import {
   Tooltip,
   TooltipContent,
@@ -58,21 +59,7 @@ export function TopHeader({
           <TooltipContent>Global search — coming soon</TooltipContent>
         </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-disabled
-                className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              />
-            }
-          >
-            <Bell className="size-4" aria-hidden />
-            <span className="sr-only">Notifications (coming soon)</span>
-          </TooltipTrigger>
-          <TooltipContent>Notifications — coming soon</TooltipContent>
-        </Tooltip>
+        <NotificationBell />
 
         <div className="ml-1">
           <UserMenu user={user} compact />

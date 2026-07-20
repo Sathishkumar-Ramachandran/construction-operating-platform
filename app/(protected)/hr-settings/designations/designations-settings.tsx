@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,12 +21,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MasterDataPage } from "@/components/hr/master-data-page";
+import { MasterDataPage, type MasterDataRow } from "@/components/hr/master-data-page";
 import { saveDesignationAction, setDesignationActiveAction } from "@/actions/hr-master-data-actions";
 import { useMasterDataOptions } from "@/components/hr/use-master-data-options";
 
 export function DesignationsSettings() {
   const [createOpen, setCreateOpen] = useState(false);
+  const [editRow, setEditRow] = useState<MasterDataRow | null>(null);
 
   return (
     <MasterDataPage
@@ -54,28 +55,66 @@ export function DesignationsSettings() {
           <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
             <Plus className="size-4" aria-hidden /> New designation
           </Button>
-          {createOpen ? <CreateDesignationDialog onOpenChange={setCreateOpen} onCreated={onCreated} /> : null}
+          {createOpen ? <SaveDesignationDialog onOpenChange={setCreateOpen} onSaved={onCreated} /> : null}
+        </>
+      )}
+      renderRowActions={(row, onUpdated) => (
+        <>
+          <Button variant="outline" size="sm" onClick={() => setEditRow(row)} className="gap-1.5">
+            <Pencil className="size-3.5" aria-hidden /> Edit
+          </Button>
+          {editRow?.id === row.id ? (
+            <SaveDesignationDialog
+              initial={{
+                id: row.id,
+                code: row.code,
+                name: row.name,
+                departmentId: (row.department as { id: string } | null)?.id ?? "",
+                isManagerial: Boolean(row.isManagerial),
+                requiredDocumentTypeIds: (
+                  (row.requiredDocuments as { documentType: { id: string } }[] | undefined) ?? []
+                ).map((r) => r.documentType.id),
+              }}
+              onOpenChange={(open) => !open && setEditRow(null)}
+              onSaved={() => {
+                setEditRow(null);
+                onUpdated();
+              }}
+            />
+          ) : null}
         </>
       )}
     />
   );
 }
 
-function CreateDesignationDialog({
+function SaveDesignationDialog({
+  initial,
   onOpenChange,
-  onCreated,
+  onSaved,
 }: {
+  initial?: {
+    id: string;
+    code: string;
+    name: string;
+    departmentId: string;
+    isManagerial: boolean;
+    requiredDocumentTypeIds: string[];
+  };
   onOpenChange: (open: boolean) => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }) {
+  const isEdit = Boolean(initial?.id);
   const { data: departments } = useMasterDataOptions("departments");
   const { data: documentTypes } = useMasterDataOptions("document-types");
 
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
-  const [departmentId, setDepartmentId] = useState("");
-  const [isManagerial, setIsManagerial] = useState(false);
-  const [requiredDocumentTypeIds, setRequiredDocumentTypeIds] = useState<string[]>([]);
+  const [code, setCode] = useState(initial?.code ?? "");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [departmentId, setDepartmentId] = useState(initial?.departmentId ?? "");
+  const [isManagerial, setIsManagerial] = useState(initial?.isManagerial ?? false);
+  const [requiredDocumentTypeIds, setRequiredDocumentTypeIds] = useState<string[]>(
+    initial?.requiredDocumentTypeIds ?? []
+  );
   const [submitting, setSubmitting] = useState(false);
 
   function toggleRequiredDocumentType(id: string, checked: boolean) {
@@ -91,6 +130,7 @@ function CreateDesignationDialog({
     }
     setSubmitting(true);
     const result = await saveDesignationAction({
+      id: initial?.id,
       code: code.toUpperCase(),
       name,
       departmentId: departmentId || null,
@@ -102,16 +142,16 @@ function CreateDesignationDialog({
       toast.error(result.message);
       return;
     }
-    toast.success("Designation created.");
+    toast.success(`Designation ${isEdit ? "updated" : "created"}.`);
     onOpenChange(false);
-    onCreated();
+    onSaved();
   }
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New designation</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit designation" : "New designation"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
@@ -124,7 +164,11 @@ function CreateDesignationDialog({
           </div>
           <div className="space-y-1.5">
             <Label>Department (optional)</Label>
-            <Select value={departmentId} onValueChange={(v) => setDepartmentId(v ?? "")}>
+            <Select
+              value={departmentId}
+              onValueChange={(v) => setDepartmentId(v ?? "")}
+              items={(departments ?? []).map((d) => ({ value: d.id, label: d.name }))}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select department" />
               </SelectTrigger>
@@ -168,7 +212,7 @@ function CreateDesignationDialog({
             Cancel
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? "Creating…" : "Create"}
+            {submitting ? "Saving…" : isEdit ? "Save changes" : "Create"}
           </Button>
         </DialogFooter>
       </DialogContent>

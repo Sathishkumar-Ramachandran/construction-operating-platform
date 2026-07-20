@@ -15,6 +15,7 @@ export type EmployeeListItem = {
   designation: { id: string; name: string } | null;
   reportingManager: { id: string; firstName: string; lastName: string | null } | null;
   userId: string | null;
+  workLocation: string | null;
 };
 
 export type EmployeesListResponse = {
