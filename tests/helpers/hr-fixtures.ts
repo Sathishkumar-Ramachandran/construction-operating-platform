@@ -9,6 +9,24 @@ export const createdEmployeeIds: string[] = [];
 export const createdProjectIds: string[] = [];
 export const createdLeaveTypeIds: string[] = [];
 export const createdMaterialIds: string[] = [];
+export const createdWarehouseIds: string[] = [];
+
+let sharedTestWarehousePromise: Promise<string> | null = null;
+
+/** Creates (once, memoized) a RUN_ID-tagged warehouse shared by test
+ * materials in this run — mirrors getSharedMasterData's memoization. */
+async function getSharedTestWarehouseId(): Promise<string> {
+  if (!sharedTestWarehousePromise) {
+    sharedTestWarehousePromise = (async () => {
+      const warehouse = await db.warehouse.create({
+        data: { code: `VITEST-WH-${RUN_ID}`, name: `Vitest Warehouse ${RUN_ID}` },
+      });
+      createdWarehouseIds.push(warehouse.id);
+      return warehouse.id;
+    })();
+  }
+  return sharedTestWarehousePromise;
+}
 
 let sharedMasterDataPromise: Promise<{
   departmentId: string;
@@ -130,10 +148,15 @@ export async function createTestMaterial(overrides: { unit?: string; quantityOnH
     },
   });
   createdMaterialIds.push(material.id);
+  const warehouseId = await getSharedTestWarehouseId();
   await db.stockLevel.create({
-    data: { materialId: material.id, quantityOnHand: overrides.quantityOnHand ?? 1000 },
+    data: { materialId: material.id, warehouseId, quantityOnHand: overrides.quantityOnHand ?? 1000 },
   });
   return material;
+}
+
+export async function getTestWarehouseId(): Promise<string> {
+  return getSharedTestWarehouseId();
 }
 
 export async function cleanupHrFixtures() {
@@ -155,6 +178,9 @@ export async function cleanupHrFixtures() {
     await db.stockTransaction.deleteMany({ where: { materialId: { in: createdMaterialIds } } });
     await db.stockLevel.deleteMany({ where: { materialId: { in: createdMaterialIds } } });
     await db.material.deleteMany({ where: { id: { in: createdMaterialIds } } });
+  }
+  if (createdWarehouseIds.length > 0) {
+    await db.warehouse.deleteMany({ where: { id: { in: createdWarehouseIds } } });
   }
   if (createdEmployeeIds.length > 0) {
     await db.employeeAvailabilityOverride.deleteMany({ where: { employeeId: { in: createdEmployeeIds } } });

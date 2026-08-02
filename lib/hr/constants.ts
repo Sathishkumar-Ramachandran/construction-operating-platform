@@ -202,6 +202,14 @@ export const DEFAULT_DOCUMENT_TYPES = [
   { code: "BANK_DOCUMENT", name: "Bank Document", requiresExpiryDate: false, isConfidential: true },
   { code: "RESUME", name: "Resume", requiresExpiryDate: false, isConfidential: false },
   { code: "PROFILE_PHOTO", name: "Profile Photo", requiresExpiryDate: false, isConfidential: false },
+  { code: "TENDER_DOC", name: "Tender Document", requiresExpiryDate: false, isConfidential: true },
+  { code: "CONTRACT", name: "Contract", requiresExpiryDate: false, isConfidential: true },
+  { code: "DRAWING", name: "Drawing", requiresExpiryDate: false, isConfidential: false },
+  { code: "BOQ", name: "Bill of Quantities", requiresExpiryDate: false, isConfidential: false },
+  { code: "PERMIT", name: "Permit", requiresExpiryDate: true, isConfidential: false },
+  { code: "SUPPLIER_QUOTATION", name: "Supplier Quotation", requiresExpiryDate: false, isConfidential: false },
+  { code: "SUPPLIER_INVOICE", name: "Supplier Invoice", requiresExpiryDate: false, isConfidential: true },
+  { code: "SUPPLIER_CERTIFICATE", name: "Supplier Certificate", requiresExpiryDate: true, isConfidential: false },
   { code: "OTHER", name: "Other", requiresExpiryDate: false, isConfidential: false },
 ] as const;
 

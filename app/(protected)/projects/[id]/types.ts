@@ -85,3 +85,53 @@ export type ChecklistItemView = {
 /** Checklist for each site's *current* stage only — past/future stages
  * aren't fetched since the stepper only ever lets the current row expand. */
 export type SiteChecklistMap = Record<string, ChecklistItemView[]>;
+
+export type WbsTaskView = TaskView & {
+  parentTaskId: string | null;
+  wbsCode: string | null;
+  plannedStartDate: string | null;
+  plannedEndDate: string | null;
+  percentComplete: number;
+};
+
+export type BudgetLineView = {
+  id: string;
+  category: string;
+  description: string | null;
+  budgetedAmount: number;
+  committedAmount: number;
+  actualAmount: number;
+};
+
+export type ProgressClaimView = {
+  id: string;
+  claimNumber: number;
+  claimPeriodTo: string;
+  claimedAmount: number;
+  certifiedAmount: number | null;
+  retentionPercentage: number;
+  retentionHeld: number | null;
+  status: string;
+  submittedAt: string | null;
+  paidAt: string | null;
+  notes: string | null;
+};
+
+export type DefectItemView = {
+  id: string;
+  site: { id: string; code: string; name: string } | null;
+  description: string;
+  reportedAt: string;
+  dueDate: string | null;
+  status: string;
+  rectifiedAt: string | null;
+  notes: string | null;
+};
+
+export type DocumentView = {
+  id: string;
+  originalFileName: string;
+  isConfidential: boolean;
+  createdAt: string;
+  documentType: { id: string; name: string };
+};

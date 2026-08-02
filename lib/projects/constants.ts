@@ -195,3 +195,79 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   DONE: "Done",
   CANCELLED: "Cancelled",
 };
+
+export const BudgetLineCategory = {
+  LABOUR: "LABOUR",
+  MATERIAL: "MATERIAL",
+  EQUIPMENT: "EQUIPMENT",
+  SUBCONTRACT: "SUBCONTRACT",
+  OVERHEAD: "OVERHEAD",
+} as const;
+export type BudgetLineCategory = (typeof BudgetLineCategory)[keyof typeof BudgetLineCategory];
+
+export const BUDGET_LINE_CATEGORY_LABELS: Record<BudgetLineCategory, string> = {
+  LABOUR: "Labour",
+  MATERIAL: "Material",
+  EQUIPMENT: "Equipment",
+  SUBCONTRACT: "Subcontract",
+  OVERHEAD: "Overhead",
+};
+
+/** Monthly interim-claim lifecycle (PSSCOC/SIA-style progress claims —
+ * see the ProgressClaim model doc comment in schema.prisma). Certification
+ * is approval-gated via the generic engine's PROGRESS_CLAIM module, same
+ * preparer/certifier segregation as Payroll's OPEN->PENDING_APPROVAL. */
+export const ProgressClaimStatus = {
+  DRAFT: "DRAFT",
+  PENDING_APPROVAL: "PENDING_APPROVAL",
+  CERTIFIED: "CERTIFIED",
+  REJECTED: "REJECTED",
+  PAID: "PAID",
+} as const;
+export type ProgressClaimStatus = (typeof ProgressClaimStatus)[keyof typeof ProgressClaimStatus];
+
+export const PROGRESS_CLAIM_STATUS_LABELS: Record<ProgressClaimStatus, string> = {
+  DRAFT: "Draft",
+  PENDING_APPROVAL: "Pending Certification",
+  CERTIFIED: "Certified",
+  REJECTED: "Rejected",
+  PAID: "Paid",
+};
+
+export const PROGRESS_CLAIM_STATUS_TRANSITIONS: Record<ProgressClaimStatus, ProgressClaimStatus[]> = {
+  DRAFT: [ProgressClaimStatus.PENDING_APPROVAL],
+  PENDING_APPROVAL: [ProgressClaimStatus.CERTIFIED, ProgressClaimStatus.REJECTED],
+  CERTIFIED: [ProgressClaimStatus.PAID],
+  REJECTED: [ProgressClaimStatus.DRAFT],
+  PAID: [],
+};
+
+/** Default retention held back from each certified progress claim, per the
+ * common Singapore-contract convention (typically 5%, capped at a total
+ * retention sum — the cap isn't modeled yet, just the per-claim rate). */
+export const DEFAULT_RETENTION_PERCENTAGE = 5;
+
+export const DefectItemStatus = {
+  OPEN: "OPEN",
+  IN_PROGRESS: "IN_PROGRESS",
+  RECTIFIED: "RECTIFIED",
+  DISPUTED: "DISPUTED",
+  CLOSED: "CLOSED",
+} as const;
+export type DefectItemStatus = (typeof DefectItemStatus)[keyof typeof DefectItemStatus];
+
+export const DEFECT_ITEM_STATUS_LABELS: Record<DefectItemStatus, string> = {
+  OPEN: "Open",
+  IN_PROGRESS: "In Progress",
+  RECTIFIED: "Rectified",
+  DISPUTED: "Disputed",
+  CLOSED: "Closed",
+};
+
+export const DEFECT_ITEM_STATUS_TRANSITIONS: Record<DefectItemStatus, DefectItemStatus[]> = {
+  OPEN: [DefectItemStatus.IN_PROGRESS, DefectItemStatus.DISPUTED],
+  IN_PROGRESS: [DefectItemStatus.RECTIFIED, DefectItemStatus.DISPUTED],
+  RECTIFIED: [DefectItemStatus.CLOSED],
+  DISPUTED: [DefectItemStatus.IN_PROGRESS, DefectItemStatus.CLOSED],
+  CLOSED: [],
+};

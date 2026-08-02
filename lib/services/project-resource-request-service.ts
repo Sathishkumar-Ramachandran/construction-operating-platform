@@ -7,6 +7,7 @@ import { getActorEmployeeId } from "@/lib/services/employee-service";
 import { hasPermission } from "@/lib/services/authorization-service";
 import { assertActorCanAccessProject } from "@/lib/services/project-service";
 import { writeStockTransaction } from "@/lib/services/stock-service";
+import { getDefaultWarehouse } from "@/lib/services/warehouse-service";
 import { PERMISSIONS } from "@/lib/authorization/permissions";
 import { UserRole } from "@/lib/authorization/roles";
 import * as approvalService from "@/lib/services/approval-service";
@@ -59,6 +60,16 @@ export async function createResourceRequest(
 
   const employeeId = await getActorEmployeeId(actor.id);
 
+  // Chosen now, not at approval-decision time — the approval engine's
+  // decideApprovalStep only ever carries {decision, notes} (see
+  // approval-service.ts), so the onApproved hook below needs this already
+  // on the row. Falls back to the company default warehouse if the
+  // requester didn't pick one explicitly (the common case with one
+  // warehouse); requires an explicit choice once there's more than one and
+  // no MAIN warehouse is designated.
+  const fulfillmentWarehouseId = input.fulfillmentWarehouseId || (await getDefaultWarehouse())?.id;
+  if (!fulfillmentWarehouseId) throw new AppError(ErrorCode.WAREHOUSE_NOT_FOUND);
+
   const request = await db.projectResourceRequest.create({
     data: {
       projectId: input.projectId,
@@ -71,6 +82,7 @@ export async function createResourceRequest(
       notes: input.notes || null,
       requestedByUserId: actor.id,
       requestedByEmployeeId: employeeId,
+      fulfillmentWarehouseId,
     },
   });
 
@@ -162,9 +174,13 @@ registerApprovalModule(ApprovalModule.EQUIPMENT_REQUEST, {
     // Issue stock for the approved quantity — allowed to go negative
     // (backorder) per the locked product decision; this never blocks the
     // approval itself. No-op if the request predates the material link.
-    if (updated.materialId) {
+    // fulfillmentWarehouseId is guaranteed set by createResourceRequest
+    // (which throws if no warehouse could be resolved), so every approvable
+    // request already has one — no fallback needed here.
+    if (updated.materialId && updated.fulfillmentWarehouseId) {
       await writeStockTransaction(tx, null, {
         materialId: updated.materialId,
+        warehouseId: updated.fulfillmentWarehouseId,
         type: StockTransactionType.ISSUE,
         quantity: Number(updated.quantity),
         referenceType: StockReferenceType.PROJECT_RESOURCE_REQUEST,

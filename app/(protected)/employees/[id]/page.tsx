@@ -4,7 +4,7 @@ import { PERMISSIONS } from "@/lib/authorization/permissions";
 import { hasPermission } from "@/lib/services/authorization-service";
 import { isAppError } from "@/lib/errors";
 import { PageHeader } from "@/components/shared/page-header";
-import { getEmployeeById, employeeDisplayName } from "@/lib/services/employee-service";
+import { getEmployeeById, employeeDisplayName, getActorEmployeeId } from "@/lib/services/employee-service";
 import { getWorkforceAvailability } from "@/lib/services/employee-availability-service";
 import { getStatusHistory } from "@/lib/services/employee-status-service";
 import { listAssignmentsForEmployee } from "@/lib/services/employee-allocation-service";
@@ -14,6 +14,7 @@ import { listCertifications } from "@/lib/services/certification-service";
 import { getDirectReports } from "@/lib/services/org-hierarchy-service";
 import { listEmergencyContacts, listBankAccountsMasked } from "@/lib/services/employee-personal-service";
 import { getEmployeeAttendanceHistory } from "@/lib/services/attendance-service";
+import { getSalaryStructureForEmployee, listPayslipsForEmployee } from "@/lib/services/payroll-service";
 import { db } from "@/lib/db";
 import { EmployeeProfileTabs } from "@/app/(protected)/employees/[id]/employee-profile-tabs";
 
@@ -52,6 +53,10 @@ export default async function EmployeeProfilePage({
     canViewAudit,
     canViewAttendance,
     canManageAttendance,
+    canViewPayslipsAll,
+    canViewPayslipsOwn,
+    canManageSalaryStructures,
+    actorEmployeeId,
     availability,
     statusHistory,
     assignments,
@@ -81,6 +86,10 @@ export default async function EmployeeProfilePage({
     hasPermission(actor, PERMISSIONS.AUDIT_VIEW.code),
     hasPermission(actor, PERMISSIONS.HR_ATTENDANCE_VIEW.code),
     hasPermission(actor, PERMISSIONS.HR_ATTENDANCE_MANAGE.code),
+    hasPermission(actor, PERMISSIONS.PAYROLL_PAYSLIPS_VIEW_ALL.code),
+    hasPermission(actor, PERMISSIONS.PAYROLL_PAYSLIPS_VIEW_OWN.code),
+    hasPermission(actor, PERMISSIONS.PAYROLL_STRUCTURES_MANAGE.code),
+    getActorEmployeeId(actor.id),
     getWorkforceAvailability(employee.id),
     getStatusHistory(employee.id),
     listAssignmentsForEmployee(employee.id),
@@ -135,6 +144,15 @@ export default async function EmployeeProfilePage({
       })
     : null;
 
+  const isSelf = actorEmployeeId === employee.id;
+  const canViewPayroll = canViewPayslipsAll || canManageSalaryStructures || (isSelf && canViewPayslipsOwn);
+  const [salaryStructure, payslips] = canViewPayroll
+    ? await Promise.all([
+        getSalaryStructureForEmployee(employee.id),
+        listPayslipsForEmployee(employee.id),
+      ])
+    : [null, []];
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -156,6 +174,8 @@ export default async function EmployeeProfilePage({
         emergencyContacts={emergencyContacts}
         bankAccounts={bankAccounts}
         attendanceHistory={attendanceHistory}
+        salaryStructure={salaryStructure}
+        payslips={payslips}
         linkedUser={linkedUser}
         permissions={{
           canUpdate,
@@ -174,6 +194,8 @@ export default async function EmployeeProfilePage({
           canViewAudit,
           canViewAttendance,
           canManageAttendance,
+          canViewPayroll,
+          canManageSalaryStructures,
         }}
       />
     </div>

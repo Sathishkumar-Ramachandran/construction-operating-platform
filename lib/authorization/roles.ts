@@ -4,6 +4,8 @@ export const UserRole = {
   MANAGER: "MANAGER",
   HR: "HR",
   TEAM_MEMBER: "TEAM_MEMBER",
+  SALES: "SALES",
+  WAREHOUSE_KEEPER: "WAREHOUSE_KEEPER",
 } as const;
 
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
@@ -16,6 +18,8 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   MANAGER: "Manager",
   HR: "HR",
   TEAM_MEMBER: "Team Member",
+  SALES: "Sales",
+  WAREHOUSE_KEEPER: "Warehouse Keeper",
 };
 
 export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
@@ -23,8 +27,10 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
     "Full end-to-end control of the company platform. Owner-level access.",
   ADMIN: "Controls projects, managers, and HR.",
   MANAGER: "Controls assigned project lifecycle and team members.",
-  HR: "Controls manager and high-level project/HR roles.",
+  HR: "Controls employee records, attendance, leave, and payroll.",
   TEAM_MEMBER: "Assigned project tasks.",
+  SALES: "Manages CRM leads, tenders, and quotations they own.",
+  WAREHOUSE_KEEPER: "Confirms goods receipts and stock transfers for assigned warehouses.",
 };
 
 export function isUserRole(value: string): value is UserRole {

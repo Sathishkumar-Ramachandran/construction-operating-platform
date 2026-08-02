@@ -19,6 +19,8 @@ import {
   DEFAULT_LEAVE_TYPES,
   defaultDocumentTypeSeedRow,
 } from "@/lib/hr/constants";
+import { DEFAULT_CPF_CONTRIBUTION_RATES } from "@/lib/payroll/constants";
+import { DEFAULT_WAREHOUSE_CODE } from "@/lib/erp/constants";
 import { ensureEmployeeNumberSequenceSeeded } from "@/lib/services/employee-number-service";
 
 async function seedRoles() {
@@ -227,6 +229,43 @@ async function seedLeaveTypes() {
   console.log(`Seeded ${DEFAULT_LEAVE_TYPES.length} leave types.`);
 }
 
+/** Seeds the starter CPF rate schedule only if the table is empty — once an
+ * admin has adjusted rates via the Payroll settings UI, re-running the seed
+ * must never clobber their edits (unlike Role/Permission, there's no
+ * natural unique key here to safely upsert against). */
+async function seedCpfContributionRates() {
+  const existingCount = await db.cpfContributionRate.count();
+  if (existingCount > 0) {
+    console.log("CPF contribution rates already seeded; skipping.");
+    return;
+  }
+
+  await db.cpfContributionRate.createMany({
+    data: DEFAULT_CPF_CONTRIBUTION_RATES.map((rate) => ({
+      ageBandLabel: rate.ageBandLabel,
+      minAge: rate.minAge,
+      maxAge: rate.maxAge,
+      wageCeiling: rate.wageCeiling,
+      employeeRate: rate.employeeRate,
+      employerRate: rate.employerRate,
+      effectiveFrom: new Date("2024-01-01"),
+    })),
+  });
+  console.log(`Seeded ${DEFAULT_CPF_CONTRIBUTION_RATES.length} starter CPF contribution rates.`);
+}
+
+/** Every stock ledger row needs a warehouseId — a single MAIN warehouse
+ * lets fresh environments create resource requests/POs immediately, without
+ * forcing every new deployment to set up a warehouse by hand first. */
+async function seedDefaultWarehouse() {
+  await db.warehouse.upsert({
+    where: { code: DEFAULT_WAREHOUSE_CODE },
+    create: { code: DEFAULT_WAREHOUSE_CODE, name: "Main Warehouse", isActive: true },
+    update: {},
+  });
+  console.log("Seeded default MAIN warehouse.");
+}
+
 async function main() {
   const roles = await seedRoles();
   const permissions = await seedPermissions();
@@ -236,6 +275,8 @@ async function main() {
   await seedProjectRoles();
   await seedDocumentTypes();
   await seedLeaveTypes();
+  await seedDefaultWarehouse();
+  await seedCpfContributionRates();
   await ensureEmployeeNumberSequenceSeeded();
 }
 

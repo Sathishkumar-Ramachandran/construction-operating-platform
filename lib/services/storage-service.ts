@@ -39,9 +39,13 @@ function getClient(): S3Client {
 
 const SIGNED_URL_TTL_SECONDS = 5 * 60;
 
-export function buildDocumentStorageKey(employeeId: string, originalFileName: string) {
+/** Generalized across every document-attached entity (employees, projects/
+ * leads, suppliers/purchase-orders) — `entityType` is a short storage-path
+ * segment (e.g. "employee-documents", "project-documents",
+ * "supplier-documents"), not a display label. */
+export function buildDocumentStorageKey(entityType: string, entityId: string, originalFileName: string) {
   const safeName = originalFileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-  return `employee-documents/${employeeId}/${randomUUID()}-${safeName}`;
+  return `${entityType}/${entityId}/${randomUUID()}-${safeName}`;
 }
 
 /** Presigned PUT URL the browser uploads directly to — the server never

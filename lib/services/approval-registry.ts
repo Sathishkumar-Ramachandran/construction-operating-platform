@@ -8,6 +8,9 @@ export const ApprovalModule = {
   LEAVE: "LEAVE",
   EQUIPMENT_REQUEST: "EQUIPMENT_REQUEST",
   PROJECT_STAGE_GATE: "PROJECT_STAGE_GATE",
+  PAYROLL_RUN: "PAYROLL_RUN",
+  PURCHASE_ORDER: "PURCHASE_ORDER",
+  PROGRESS_CLAIM: "PROGRESS_CLAIM",
 } as const;
 export type ApprovalModule = (typeof ApprovalModule)[keyof typeof ApprovalModule];
 

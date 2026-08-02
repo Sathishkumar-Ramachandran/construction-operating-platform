@@ -20,6 +20,7 @@ import { WorkPassesPanel } from "@/app/(protected)/employees/[id]/work-passes-pa
 import { CertificationsPanel } from "@/app/(protected)/employees/[id]/certifications-panel";
 import { BankAccountsPanel } from "@/app/(protected)/employees/[id]/bank-accounts-panel";
 import { AttendancePanel, type AttendanceHistoryDayView } from "@/app/(protected)/employees/[id]/attendance-panel";
+import { PayrollPanel } from "@/app/(protected)/employees/[id]/payroll-panel";
 import { employeeDisplayName } from "@/lib/hr/employee-display";
 import type { EmployeeAccessLevel } from "@/lib/services/employee-service";
 import type { getEmployeeById } from "@/lib/services/employee-service";
@@ -31,6 +32,7 @@ import type { listWorkPasses } from "@/lib/services/work-pass-service";
 import type { listCertifications } from "@/lib/services/certification-service";
 import type { getDirectReports } from "@/lib/services/org-hierarchy-service";
 import type { listEmergencyContacts, listBankAccountsMasked } from "@/lib/services/employee-personal-service";
+import type { getSalaryStructureForEmployee, listPayslipsForEmployee } from "@/lib/services/payroll-service";
 
 type Employee = Awaited<ReturnType<typeof getEmployeeById>>["employee"];
 
@@ -51,6 +53,8 @@ type Permissions = {
   canViewAudit: boolean;
   canViewAttendance: boolean;
   canManageAttendance: boolean;
+  canViewPayroll: boolean;
+  canManageSalaryStructures: boolean;
 };
 
 export function EmployeeProfileTabs({
@@ -68,10 +72,14 @@ export function EmployeeProfileTabs({
   emergencyContacts,
   bankAccounts,
   attendanceHistory,
+  salaryStructure,
+  payslips,
   linkedUser,
   permissions,
 }: {
   employee: Employee;
+  salaryStructure: Awaited<ReturnType<typeof getSalaryStructureForEmployee>>;
+  payslips: Awaited<ReturnType<typeof listPayslipsForEmployee>>;
   access: EmployeeAccessLevel;
   availability: Awaited<ReturnType<typeof getWorkforceAvailability>>;
   statusHistory: Awaited<ReturnType<typeof getStatusHistory>>;
@@ -163,6 +171,7 @@ export function EmployeeProfileTabs({
             ) : null}
             {permissions.canViewAllocation ? <TabsTrigger value="allocation">Allocation</TabsTrigger> : null}
             {permissions.canViewAttendance ? <TabsTrigger value="attendance">Attendance</TabsTrigger> : null}
+            {permissions.canViewPayroll ? <TabsTrigger value="payroll">Payroll</TabsTrigger> : null}
             <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>
             {permissions.canCreateUserFromEmployee || permissions.canResetPassword ? (
               <TabsTrigger value="access">User Access</TabsTrigger>
@@ -314,6 +323,17 @@ export function EmployeeProfileTabs({
               employeeName={employeeDisplayName(employee)}
               history={attendanceHistory}
               canManage={permissions.canManageAttendance}
+            />
+          </TabsContent>
+        ) : null}
+
+        {permissions.canViewPayroll ? (
+          <TabsContent value="payroll">
+            <PayrollPanel
+              employeeId={employee.id}
+              salaryStructure={salaryStructure}
+              payslips={payslips}
+              canManageStructures={permissions.canManageSalaryStructures}
             />
           </TabsContent>
         ) : null}

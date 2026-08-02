@@ -14,8 +14,10 @@ export default async function ProjectsPage() {
   const canManage = await hasPermission(user, PERMISSIONS.PROJECTS_MANAGE.code);
 
   // Managers and Team Members only see projects they're actively assigned
-  // to — Admin/Super Admin (and HR, via a separate hr-settings tool) see
-  // everything. Reuses the same scoping computed in [id]/page.tsx.
+  // to — Admin/Super Admin see everything. HR holds no PROJECTS_VIEW grant
+  // by default, so it never reaches this list at all (see
+  // assertActorCanAccessProject in project-service.ts for the matching
+  // per-project boundary). Reuses the same scoping computed in [id]/page.tsx.
   const isScopedRole = user.role === UserRole.MANAGER || user.role === UserRole.TEAM_MEMBER;
   const actorEmployeeId = isScopedRole ? await getActorEmployeeId(user.id) : null;
   const { projects } =

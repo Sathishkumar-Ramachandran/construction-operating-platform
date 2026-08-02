@@ -82,7 +82,7 @@ export async function listMaterials() {
     orderBy: { name: "asc" },
     include: {
       category: { select: { id: true, code: true, name: true } },
-      stockLevel: { select: { quantityOnHand: true } },
+      stockLevels: { select: { quantityOnHand: true, warehouse: { select: { id: true, code: true, name: true } } } },
     },
   });
 }
@@ -104,9 +104,10 @@ export async function createMaterial(actor: AuthenticatedUser, input: MaterialIn
       },
     });
 
-    await tx.stockLevel.create({
-      data: { materialId: material.id, quantityOnHand: 0 },
-    });
+    // No StockLevel row is created here — StockLevel is now per-warehouse
+    // (see Warehouse in schema.prisma) and a material has no stock anywhere
+    // until its first StockTransaction, which upserts the row lazily (see
+    // writeStockTransaction in stock-service.ts).
 
     await recordAuditLog(tx, {
       userId: actor.id,

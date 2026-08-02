@@ -19,22 +19,42 @@ import type { Prisma } from "@/generated/prisma/client";
 
 type ActorMeta = { ipAddress?: string | null; userAgent?: string | null };
 
-/** Manager/Team Member project-level access boundary — SUPER_ADMIN/ADMIN and
- * HR's org-wide allocation grant (HR_ALLOCATION_MANAGE) bypass unrestricted;
- * everyone else must have an active EmployeeProjectAssignment to this exact
- * project. Throws PROJECT_NOT_FOUND (not a "forbidden" code) so a project's
- * existence isn't confirmed to someone who isn't on it. */
+/** Project *content* access boundary (workspace page, tasks, budget,
+ * resource requests, documents) — only SUPER_ADMIN/ADMIN see every project
+ * unrestricted; everyone else, including HR, must have an active
+ * EmployeeProjectAssignment to this exact project. HR's org-wide
+ * HR_ALLOCATION_MANAGE grant deliberately does NOT bypass this check: that
+ * permission authorizes managing *assignment records* org-wide (see
+ * assertActorCanManageAssignmentsForProject below), not viewing a project's
+ * tasks/budget/documents. Throws PROJECT_NOT_FOUND (not a "forbidden" code)
+ * so a project's existence isn't confirmed to someone who isn't on it. */
 export async function assertActorCanAccessProject(
   actor: AuthenticatedUser,
   projectId: string
 ): Promise<void> {
   if (actor.role === UserRole.SUPER_ADMIN || actor.role === UserRole.ADMIN) return;
-  if (await hasPermission(actor, PERMISSIONS.HR_ALLOCATION_MANAGE.code)) return;
 
   const employeeId = await getActorEmployeeId(actor.id);
   if (!employeeId || !(await isActivelyAssignedToProject(employeeId, projectId))) {
     throw new AppError(ErrorCode.PROJECT_NOT_FOUND);
   }
+}
+
+/** Assignment-*mutation* boundary — deliberately broader than
+ * assertActorCanAccessProject. SUPER_ADMIN/ADMIN and holders of the
+ * org-wide HR_ALLOCATION_MANAGE grant may create assignments on any
+ * project (that's the entire point of an org-wide allocation permission —
+ * HR must be able to staff a project it isn't itself a member of); an
+ * actor relying only on PROJECTS_TEAM_MANAGE (e.g. a Manager) stays scoped
+ * to projects they can already access. Use this for assignment mutations
+ * only — never for reading a project's tasks/budget/documents. */
+export async function assertActorCanManageAssignmentsForProject(
+  actor: AuthenticatedUser,
+  projectId: string
+): Promise<void> {
+  if (actor.role === UserRole.SUPER_ADMIN || actor.role === UserRole.ADMIN) return;
+  if (await hasPermission(actor, PERMISSIONS.HR_ALLOCATION_MANAGE.code)) return;
+  await assertActorCanAccessProject(actor, projectId);
 }
 
 export async function listProjects(query: ListProjectsQuery = {}) {

@@ -3,7 +3,7 @@ import { AppError, ErrorCode } from "@/lib/errors";
 import { AssignmentStatus, EmploymentStatus, INACTIVE_EMPLOYMENT_STATUSES } from "@/lib/hr/constants";
 import { ProjectStatus } from "@/lib/projects/constants";
 import { AuditAction, recordAuditLog } from "@/lib/services/audit-service";
-import { assertActorCanAccessProject } from "@/lib/services/project-service";
+import { assertActorCanManageAssignmentsForProject } from "@/lib/services/project-service";
 import type { CreateAssignmentInput, EndAssignmentInput } from "@/lib/validation/allocation";
 import type { AuthenticatedUser } from "@/types/auth";
 import type { Prisma } from "@/generated/prisma/client";
@@ -110,7 +110,7 @@ export async function createAssignment(
   input: CreateAssignmentInput,
   meta: ActorMeta = {}
 ) {
-  await assertActorCanAccessProject(actor, input.projectId);
+  await assertActorCanManageAssignmentsForProject(actor, input.projectId);
 
   const employee = await db.employee.findUnique({
     where: { id: input.employeeId },

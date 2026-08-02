@@ -8,6 +8,8 @@ const ROLE_VARIANT: Record<UserRole, "default" | "secondary" | "outline"> = {
   MANAGER: "outline",
   HR: "outline",
   TEAM_MEMBER: "outline",
+  SALES: "outline",
+  WAREHOUSE_KEEPER: "outline",
 };
 
 export function RoleBadge({ role }: { role: UserRole }) {

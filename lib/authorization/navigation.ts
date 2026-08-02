@@ -15,6 +15,11 @@ import {
   UserCircle,
   Compass,
   Settings2,
+  Wallet,
+  Warehouse,
+  FileText,
+  Truck,
+  Handshake,
 } from "lucide-react";
 import { PERMISSIONS } from "@/lib/authorization/permissions";
 import { UserRole } from "@/lib/authorization/roles";
@@ -122,6 +127,23 @@ export const NAVIGATION: NavigationGroup[] = [
     ],
   },
   {
+    title: "Payroll",
+    items: [
+      {
+        title: "Payroll Runs",
+        href: "/payroll",
+        icon: Wallet,
+        permissions: [PERMISSIONS.PAYROLL_RUNS_VIEW.code],
+      },
+      {
+        title: "Payroll Settings",
+        href: "/payroll/settings",
+        icon: Settings2,
+        permissions: [PERMISSIONS.PAYROLL_STRUCTURES_MANAGE.code],
+      },
+    ],
+  },
+  {
     title: "ERP",
     items: [
       {
@@ -129,6 +151,35 @@ export const NAVIGATION: NavigationGroup[] = [
         href: "/erp",
         icon: Boxes,
         permissions: [PERMISSIONS.INVENTORY_MANAGE.code],
+      },
+      {
+        title: "Warehouses",
+        href: "/erp/warehouses",
+        icon: Warehouse,
+        permissions: [PERMISSIONS.ERP_WAREHOUSES_MANAGE.code],
+      },
+      {
+        title: "Purchase Orders",
+        href: "/erp/purchase-orders",
+        icon: FileText,
+        permissions: [PERMISSIONS.ERP_PURCHASE_ORDERS_VIEW.code],
+      },
+      {
+        title: "Stock Transfers",
+        href: "/erp/stock-transfers",
+        icon: Truck,
+        permissions: [PERMISSIONS.ERP_STOCK_TRANSFERS_MANAGE.code],
+      },
+    ],
+  },
+  {
+    title: "CRM",
+    items: [
+      {
+        title: "Leads",
+        href: "/crm/leads",
+        icon: Handshake,
+        permissions: [PERMISSIONS.CRM_LEADS_VIEW.code],
       },
     ],
   },

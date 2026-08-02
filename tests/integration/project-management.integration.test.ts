@@ -21,6 +21,7 @@ import {
   createTestProject,
   createTestSite,
   createTestMaterial,
+  getTestWarehouseId,
   cleanupHrFixtures,
 } from "@/tests/helpers/hr-fixtures";
 import type { AuthenticatedUser } from "@/types/auth";
@@ -204,7 +205,10 @@ describe("project-management (integration)", () => {
     expect(approved.status).toBe("APPROVED");
 
     // Approval issues stock — starting balance 1000, minus the 20 requested.
-    const stockAfterApproval = await db.stockLevel.findUniqueOrThrow({ where: { materialId: primer.id } });
+    const testWarehouseId = await getTestWarehouseId();
+    const stockAfterApproval = await db.stockLevel.findUniqueOrThrow({
+      where: { materialId_warehouseId: { materialId: primer.id, warehouseId: testWarehouseId } },
+    });
     expect(stockAfterApproval.quantityOnHand.toNumber()).toBe(980);
 
     // A second, still-pending request: reject it instead.
@@ -223,7 +227,9 @@ describe("project-management (integration)", () => {
     const rejected = await db.projectResourceRequest.findUniqueOrThrow({ where: { id: secondRequest.id } });
     expect(rejected.status).toBe("REJECTED");
     // Rejection never issues stock.
-    const stockAfterRejection = await db.stockLevel.findUniqueOrThrow({ where: { materialId: planks.id } });
+    const stockAfterRejection = await db.stockLevel.findUniqueOrThrow({
+      where: { materialId_warehouseId: { materialId: planks.id, warehouseId: testWarehouseId } },
+    });
     expect(stockAfterRejection.quantityOnHand.toNumber()).toBe(1000);
 
     // A third, pending request: the requester can cancel it themselves.

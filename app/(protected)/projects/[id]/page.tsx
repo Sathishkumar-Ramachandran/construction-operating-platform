@@ -8,20 +8,29 @@ import { PageHeader } from "@/components/shared/page-header";
 import { getProjectById, assertActorCanAccessProject } from "@/lib/services/project-service";
 import { listAssignmentsForProject } from "@/lib/services/employee-allocation-service";
 import { listResourceRequestsForProject } from "@/lib/services/project-resource-request-service";
-import { listTasksForProject } from "@/lib/services/task-service";
+import { listTasksForProject, listWbsForProject } from "@/lib/services/task-service";
 import { getApprovalHistoryForEntity } from "@/lib/services/approval-service";
 import { getActorEmployeeId } from "@/lib/services/employee-service";
 import { getChecklistForSite } from "@/lib/services/site-stage-checklist-service";
+import { listBudgetLinesForProject } from "@/lib/services/budget-line-service";
+import { listProgressClaimsForProject } from "@/lib/services/progress-claim-service";
+import { listDefectsForProject } from "@/lib/services/defect-item-service";
+import { listDocumentsFor } from "@/lib/services/project-document-service";
 import { ProjectStatusBadge } from "@/app/(protected)/projects/project-status-badge";
 import { ProjectWorkspaceTabs } from "@/app/(protected)/projects/[id]/project-workspace-tabs";
 import type { ProjectStatus, SiteStage } from "@/lib/projects/constants";
 import type {
   AssignmentView,
+  BudgetLineView,
+  DefectItemView,
+  DocumentView,
+  ProgressClaimView,
   ProjectView,
   ResourceRequestView,
   SiteApprovalMap,
   SiteChecklistMap,
   TaskView,
+  WbsTaskView,
 } from "@/app/(protected)/projects/[id]/types";
 
 export default async function ProjectWorkspacePage({
@@ -53,6 +62,12 @@ export default async function ProjectWorkspacePage({
     canManageTeamDirect,
     canRequestResources,
     canManageTasks,
+    canManageBudget,
+    canManageWbs,
+    canManageClaims,
+    canManageDefects,
+    canManageDocuments,
+    canViewDocuments,
     assignments,
     resourceRequests,
     tasks,
@@ -62,12 +77,30 @@ export default async function ProjectWorkspacePage({
     hasPermission(actor, PERMISSIONS.PROJECTS_TEAM_MANAGE.code),
     hasPermission(actor, PERMISSIONS.PROJECTS_RESOURCE_REQUEST_MANAGE.code),
     hasPermission(actor, PERMISSIONS.PROJECTS_TASK_MANAGE.code),
+    hasPermission(actor, PERMISSIONS.PROJECTS_BUDGET_MANAGE.code),
+    hasPermission(actor, PERMISSIONS.PROJECTS_WBS_MANAGE.code),
+    hasPermission(actor, PERMISSIONS.PROJECTS_PROGRESS_CLAIM_MANAGE.code),
+    hasPermission(actor, PERMISSIONS.PROJECTS_DEFECTS_MANAGE.code),
+    hasPermission(actor, PERMISSIONS.PROJECTS_DOCUMENTS_MANAGE.code),
+    hasPermission(actor, PERMISSIONS.PROJECTS_DOCUMENTS_VIEW.code),
     listAssignmentsForProject(project.id),
     listResourceRequestsForProject(project.id),
     listTasksForProject(project.id, restricted ? { assignedToEmployeeId: actorEmployeeId ?? "__none__" } : {}),
   ]);
 
   const canManageTeam = canManageTeamViaAllocation || canManageTeamDirect;
+
+  // Budget/WBS/Claims/Defects/Documents are all "no confidential information
+  // for Team Members" tabs, same product decision as Overview/Team/Resources
+  // above — skip the queries entirely for a restricted actor rather than
+  // fetch-then-hide.
+  const [wbsTasks, budgetLines, progressClaims, defects, documents] = await Promise.all([
+    restricted ? Promise.resolve([]) : listWbsForProject(project.id),
+    restricted ? Promise.resolve([]) : listBudgetLinesForProject(project.id),
+    restricted ? Promise.resolve([]) : listProgressClaimsForProject(project.id),
+    restricted ? Promise.resolve([]) : listDefectsForProject(project.id),
+    restricted || !canViewDocuments ? Promise.resolve([]) : listDocumentsFor({ projectId: project.id }),
+  ]);
 
   // Only sites that have ever submitted a handover request carry a
   // handoverApprovalRequestId — skip the approval-history query otherwise.
@@ -170,6 +203,64 @@ export default async function ProjectWorkspacePage({
     createdAt: task.createdAt.toISOString(),
   }));
 
+  const wbsTasksView: WbsTaskView[] = wbsTasks.map((task) => ({
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    status: task.status,
+    assignee: task.assignee,
+    site: task.site,
+    dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+    createdAt: task.createdAt.toISOString(),
+    parentTaskId: task.parentTaskId,
+    wbsCode: task.wbsCode,
+    plannedStartDate: task.plannedStartDate ? task.plannedStartDate.toISOString() : null,
+    plannedEndDate: task.plannedEndDate ? task.plannedEndDate.toISOString() : null,
+    percentComplete: task.percentComplete,
+  }));
+
+  const budgetLinesView: BudgetLineView[] = budgetLines.map((line) => ({
+    id: line.id,
+    category: line.category,
+    description: line.description,
+    budgetedAmount: Number(line.budgetedAmount),
+    committedAmount: Number(line.committedAmount),
+    actualAmount: Number(line.actualAmount),
+  }));
+
+  const progressClaimsView: ProgressClaimView[] = progressClaims.map((claim) => ({
+    id: claim.id,
+    claimNumber: claim.claimNumber,
+    claimPeriodTo: claim.claimPeriodTo.toISOString(),
+    claimedAmount: Number(claim.claimedAmount),
+    certifiedAmount: claim.certifiedAmount != null ? Number(claim.certifiedAmount) : null,
+    retentionPercentage: Number(claim.retentionPercentage),
+    retentionHeld: claim.retentionHeld != null ? Number(claim.retentionHeld) : null,
+    status: claim.status,
+    submittedAt: claim.submittedAt ? claim.submittedAt.toISOString() : null,
+    paidAt: claim.paidAt ? claim.paidAt.toISOString() : null,
+    notes: claim.notes,
+  }));
+
+  const defectsView: DefectItemView[] = defects.map((defect) => ({
+    id: defect.id,
+    site: defect.site,
+    description: defect.description,
+    reportedAt: defect.reportedAt.toISOString(),
+    dueDate: defect.dueDate ? defect.dueDate.toISOString() : null,
+    status: defect.status,
+    rectifiedAt: defect.rectifiedAt ? defect.rectifiedAt.toISOString() : null,
+    notes: defect.notes,
+  }));
+
+  const documentsView: DocumentView[] = documents.map((document) => ({
+    id: document.id,
+    originalFileName: document.originalFileName,
+    isConfidential: document.isConfidential,
+    createdAt: document.createdAt.toISOString(),
+    documentType: document.documentType,
+  }));
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -182,6 +273,11 @@ export default async function ProjectWorkspacePage({
         assignments={assignmentsView}
         resourceRequests={resourceRequestsView}
         tasks={tasksView}
+        wbsTasks={wbsTasksView}
+        budgetLines={budgetLinesView}
+        progressClaims={progressClaimsView}
+        defects={defectsView}
+        documents={documentsView}
         siteApprovals={siteApprovals}
         siteChecklists={siteChecklists}
         actorUserId={actor.id}
@@ -191,6 +287,11 @@ export default async function ProjectWorkspacePage({
         canManageTeam={canManageTeam}
         canRequestResources={canRequestResources}
         canManageTasks={canManageTasks}
+        canManageBudget={canManageBudget}
+        canManageWbs={canManageWbs}
+        canManageClaims={canManageClaims}
+        canManageDefects={canManageDefects}
+        canManageDocuments={canManageDocuments}
         restricted={restricted}
       />
     </div>

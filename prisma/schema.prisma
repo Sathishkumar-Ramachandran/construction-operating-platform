@@ -253,6 +253,8 @@ model DocumentType {
 
   documents              EmployeeDocument[]
   requiredByDesignations DesignationRequiredDocument[]
+  supplierDocuments      SupplierDocument[]
+  projectDocuments       ProjectDocument[]
 
   @@map("document_types")
 }
@@ -361,6 +363,9 @@ model Employee {
   leaveBalances         LeaveBalance[]
   leaveRequests         LeaveRequest[]
   assignedTasks         Task[]                         @relation("TaskAssignee")
+  salaryStructure       SalaryStructure?
+  payslips              Payslip[]
+  managedWarehouses     Warehouse[]                    @relation("WarehouseManager")
 
   @@index([departmentId])
   @@index([reportingManagerId])
@@ -443,6 +448,122 @@ model EmployeeStatusHistory {
 }
 
 // ---------------------------------------------------------------------------
+// Payroll — salary structures, monthly payroll runs, payslips, and the
+// Singapore CPF contribution schedule (admin-editable master data since MOM/
+// CPF Board rates change periodically). Statutory filing is a generated
+// export file for manual submission to IRAS — no live IRAS/CPF API
+// integration in this phase. See lib/services/payroll-service.ts.
+// ---------------------------------------------------------------------------
+
+model SalaryStructure {
+  id                 String   @id @default(uuid())
+  employeeId         String   @unique @map("employee_id")
+  basicMonthlySalary Decimal  @map("basic_monthly_salary") @db.Decimal(12, 2)
+  effectiveFrom      DateTime @map("effective_from")
+  cpfApplicable      Boolean  @default(true) @map("cpf_applicable")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  createdBy          String   @map("created_by")
+
+  employee   Employee                @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  components CompensationComponent[]
+
+  @@map("salary_structures")
+}
+
+model CompensationComponent {
+  id                String   @id @default(uuid())
+  salaryStructureId String   @map("salary_structure_id")
+  type              String   @map("type") // ALLOWANCE | DEDUCTION | BONUS
+  code              String
+  label             String
+  amount            Decimal  @db.Decimal(12, 2)
+  isRecurring       Boolean  @default(true) @map("is_recurring")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  salaryStructure SalaryStructure @relation(fields: [salaryStructureId], references: [id], onDelete: Cascade)
+
+  @@map("compensation_components")
+}
+
+model PayrollPeriod {
+  id                String    @id @default(uuid())
+  periodMonth       Int       @map("period_month")
+  periodYear        Int       @map("period_year")
+  status            String    @default("OPEN")
+  cutoffDate        DateTime  @map("cutoff_date")
+  payDate           DateTime? @map("pay_date")
+  approvalRequestId String?   @map("approval_request_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  createdBy         String    @map("created_by")
+
+  payslips Payslip[]
+
+  @@unique([periodYear, periodMonth])
+  @@map("payroll_periods")
+}
+
+model Payslip {
+  id                  String   @id @default(uuid())
+  payrollPeriodId     String   @map("payroll_period_id")
+  employeeId          String   @map("employee_id")
+  basicPay            Decimal  @map("basic_pay") @db.Decimal(12, 2)
+  totalAllowances     Decimal  @map("total_allowances") @db.Decimal(12, 2)
+  totalDeductions     Decimal  @map("total_deductions") @db.Decimal(12, 2)
+  grossPay            Decimal  @map("gross_pay") @db.Decimal(12, 2)
+  employeeCpfAmount   Decimal  @map("employee_cpf_amount") @db.Decimal(12, 2)
+  employerCpfAmount   Decimal  @map("employer_cpf_amount") @db.Decimal(12, 2)
+  sdlAmount           Decimal  @map("sdl_amount") @db.Decimal(12, 2)
+  netPay              Decimal  @map("net_pay") @db.Decimal(12, 2)
+  // Nullable: Employee.userId is optional and not every employee has an
+  // EmployeeBankAccount on file (e.g. a contractor mid-onboarding) — the
+  // payslip row and its computed amounts still get created either way, with
+  // disbursement left PENDING until a bank account is captured.
+  paidToBankAccountId String?  @map("paid_to_bank_account_id")
+  disbursementStatus  String   @default("PENDING") @map("disbursement_status")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  payrollPeriod PayrollPeriod     @relation(fields: [payrollPeriodId], references: [id], onDelete: Cascade)
+  employee      Employee          @relation(fields: [employeeId], references: [id])
+  lineItems     PayslipLineItem[]
+
+  @@unique([payrollPeriodId, employeeId])
+  @@map("payslips")
+}
+
+model PayslipLineItem {
+  id        String  @id @default(uuid())
+  payslipId String  @map("payslip_id")
+  type      String // EARNING | DEDUCTION | EMPLOYER_CONTRIBUTION
+  label     String
+  amount    Decimal @db.Decimal(12, 2)
+
+  payslip Payslip @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+
+  @@map("payslip_line_items")
+}
+
+/// Admin-editable master data — Singapore CPF contribution rates by age
+/// band. Seeded with a starter schedule (see prisma/seed.ts) that MUST be
+/// verified against the current CPF Board rates before any real payroll run.
+model CpfContributionRate {
+  id            String    @id @default(uuid())
+  ageBandLabel  String    @map("age_band_label")
+  minAge        Int       @map("min_age")
+  maxAge        Int?      @map("max_age")
+  wageCeiling   Decimal   @map("wage_ceiling") @db.Decimal(12, 2)
+  employeeRate  Decimal   @map("employee_rate") @db.Decimal(5, 4)
+  employerRate  Decimal   @map("employer_rate") @db.Decimal(5, 4)
+  effectiveFrom DateTime  @map("effective_from")
+  effectiveTo   DateTime? @map("effective_to")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@map("cpf_contribution_rates")
+}
+
+// ---------------------------------------------------------------------------
 // Project Management — full lifecycle (Creation/Team/Phases/Inventory/Closure)
 // and the 8-stage per-site execution workflow. Material/Equipment/Stock
 // catalogs remain deliberately out of scope here — that is the later ERP
@@ -466,11 +587,31 @@ model Project {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
+  /// Set only for projects created via lead-conversion-service.ts —
+  /// manually-created projects (the existing createProject flow) leave
+  /// these null, matching the client's "manual setup" requirement alongside
+  /// the CRM-driven path.
+  acquisitionPath              String?   @map("acquisition_path") // TENDER | NORMAL, denormalized from the source Lead
+  sourceLeadId                 String?   @unique @map("source_lead_id")
+  contractSignedAt             DateTime? @map("contract_signed_at")
+  commencementDate             DateTime? @map("commencement_date")
+  practicalCompletionDate      DateTime? @map("practical_completion_date")
+  defectsLiabilityPeriodMonths Int?      @map("defects_liability_period_months")
+  performanceBondAmount        Decimal?  @map("performance_bond_amount") @db.Decimal(12, 2)
+  performanceBondExpiryDate    DateTime? @map("performance_bond_expiry_date")
+  retentionPercentage          Decimal?  @map("retention_percentage") @db.Decimal(5, 2)
+
   sites               Site[]
   assignments         EmployeeProjectAssignment[]
   defaultForEmployees Employee[]                  @relation("EmployeeDefaultProject")
   resourceRequests    ProjectResourceRequest[]
   tasks               Task[]
+  purchaseOrders      PurchaseOrder[]
+  sourceLead          Lead?                       @relation(fields: [sourceLeadId], references: [id])
+  budgetLines         ProjectBudgetLine[]
+  documents           ProjectDocument[]
+  progressClaims      ProgressClaim[]
+  defects             DefectItem[]
 
   @@map("projects")
 }
@@ -478,14 +619,14 @@ model Project {
 model Site {
   id                        String   @id @default(uuid())
   projectId                 String   @map("project_id")
-  code                       String
-  name                       String
-  isActive                   Boolean  @default(true) @map("is_active")
-  currentStage               String   @default("PRE_START_PLANNING") @map("current_stage")
-  currentStageStartedAt      DateTime @default(now()) @map("current_stage_started_at")
-  handoverApprovalRequestId  String?  @map("handover_approval_request_id")
-  createdAt                  DateTime @default(now()) @map("created_at")
-  updatedAt                  DateTime @updatedAt @map("updated_at")
+  code                      String
+  name                      String
+  isActive                  Boolean  @default(true) @map("is_active")
+  currentStage              String   @default("PRE_START_PLANNING") @map("current_stage")
+  currentStageStartedAt     DateTime @default(now()) @map("current_stage_started_at")
+  handoverApprovalRequestId String?  @map("handover_approval_request_id")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
 
   project             Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignments         EmployeeProjectAssignment[]
@@ -495,6 +636,7 @@ model Site {
   resourceRequests    ProjectResourceRequest[]
   tasks               Task[]
   checklistItems      SiteStageChecklistItem[]
+  defectItems         DefectItem[]
 
   @@unique([projectId, code])
   @@map("sites")
@@ -508,15 +650,15 @@ model Site {
 /// rows for that stage are left in place as a historical record but are no
 /// longer editable (see SITE_STAGE_CHECKLIST_LOCKED).
 model SiteStageChecklistItem {
-  id         String    @id @default(uuid())
-  siteId     String    @map("site_id")
-  stage      String
-  itemIndex  Int       @map("item_index")
-  isChecked  Boolean   @default(false) @map("is_checked")
-  checkedBy  String?   @map("checked_by")
-  checkedAt  DateTime? @map("checked_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  id        String    @id @default(uuid())
+  siteId    String    @map("site_id")
+  stage     String
+  itemIndex Int       @map("item_index")
+  isChecked Boolean   @default(false) @map("is_checked")
+  checkedBy String?   @map("checked_by")
+  checkedAt DateTime? @map("checked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
 
@@ -551,30 +693,37 @@ model SiteStageHistory {
 /// Engine's EQUIPMENT_REQUEST module. Full stock/catalog/supplier tracking
 /// is deliberately deferred to the later ERP phase.
 model ProjectResourceRequest {
-  id                    String    @id @default(uuid())
-  projectId             String    @map("project_id")
-  siteId                String?   @map("site_id")
-  materialId            String?   @map("material_id")
+  id                     String    @id @default(uuid())
+  projectId              String    @map("project_id")
+  siteId                 String?   @map("site_id")
+  materialId             String?   @map("material_id")
   /// Denormalized snapshot of material.name at request time (display
   /// resilience if the catalog entry is later renamed/deactivated) — no
   /// longer user-typed free text; the service sets this from the resolved
   /// Material on create. Nullable materialId only exists for schema
   /// evolution safety; the create flow requires a real material.
-  itemDescription       String    @map("item_description")
-  quantity              Decimal   @db.Decimal(10, 2)
-  unit                  String
-  neededByDate          DateTime? @map("needed_by_date")
-  notes                 String?
-  status                String    @default("PENDING")
-  requestedByUserId     String    @map("requested_by_user_id")
-  requestedByEmployeeId String?   @map("requested_by_employee_id")
-  approvalRequestId     String?   @map("approval_request_id")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
+  itemDescription        String    @map("item_description")
+  quantity               Decimal   @db.Decimal(10, 2)
+  unit                   String
+  neededByDate           DateTime? @map("needed_by_date")
+  notes                  String?
+  status                 String    @default("PENDING")
+  requestedByUserId      String    @map("requested_by_user_id")
+  requestedByEmployeeId  String?   @map("requested_by_employee_id")
+  /// Chosen at request-creation time, not at approval-decision time — the
+  /// generic approval engine's decide step only ever carries
+  /// {decision, notes} (see approval-service.ts), so any data the
+  /// onApproved hook needs (which warehouse to issue from) must already be
+  /// on the request row before it reaches approval.
+  fulfillmentWarehouseId String?   @map("fulfillment_warehouse_id")
+  approvalRequestId      String?   @map("approval_request_id")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
 
-  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  site     Site?     @relation(fields: [siteId], references: [id])
-  material Material? @relation(fields: [materialId], references: [id])
+  project              Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  site                 Site?      @relation(fields: [siteId], references: [id])
+  material             Material?  @relation(fields: [materialId], references: [id])
+  fulfillmentWarehouse Warehouse? @relation(fields: [fulfillmentWarehouseId], references: [id])
 
   @@index([projectId, status])
   @@map("project_resource_requests")
@@ -598,12 +747,26 @@ model Task {
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
 
-  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  site     Site?    @relation(fields: [siteId], references: [id])
-  assignee Employee @relation("TaskAssignee", fields: [assignedToEmployeeId], references: [id])
+  /// WBS extension — additive to the original flat/single-assignee design
+  /// above (kept as-is: the restricted Team Member task view is scoped
+  /// around exactly that shape). parentTaskId is null for top-level WBS
+  /// nodes; a parent task can be a pure grouping node with no assignee-
+  /// relevant status of its own, tracked instead via its subtasks' rollup.
+  parentTaskId     String?   @map("parent_task_id")
+  wbsCode          String?   @map("wbs_code") // display code, e.g. "1.2.3" — not enforced unique, purely presentational
+  plannedStartDate DateTime? @map("planned_start_date")
+  plannedEndDate   DateTime? @map("planned_end_date")
+  percentComplete  Int       @default(0) @map("percent_complete")
+
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  site       Site?    @relation(fields: [siteId], references: [id])
+  assignee   Employee @relation("TaskAssignee", fields: [assignedToEmployeeId], references: [id])
+  parentTask Task?    @relation("TaskHierarchy", fields: [parentTaskId], references: [id])
+  subtasks   Task[]   @relation("TaskHierarchy")
 
   @@index([projectId, status])
   @@index([assignedToEmployeeId, status])
+  @@index([parentTaskId])
   @@map("tasks")
 }
 
@@ -950,10 +1113,235 @@ model Notification {
 }
 
 // ---------------------------------------------------------------------------
-// ERP — Material/Equipment catalog, Suppliers, Stock (central pool only,
-// per the locked 2026-07-19 decision — no per-site/warehouse dimension).
-// Purchase Orders and the ProjectResourceRequest->Material integration are
-// later phases; this is the catalog + stock-ledger foundation they build on.
+// CRM — Lead-to-Delivery pipeline. A Lead is pre-project: client
+// negotiation, tender bidding, or quotation pricing happens here, entirely
+// separate from Project (which only exists once work is actually won and
+// commissioned) — this keeps CRM-only data (competing-bid notes, pricing
+// strategy) out of PROJECTS.VIEW-scoped queries that Managers/Team Members
+// can already read. Two acquisition paths:
+//   TENDER — public-sector (HDB/Town Council) tenders: formal BOQ pricing,
+//     tender/bid bond, Price-Quality Method evaluation, Letter of Award.
+//   NORMAL — direct/negotiated private work (MCST/building owner): a
+//     Quotation, negotiation, private Letter of Award.
+// A WON Lead converts into a Project via lead-conversion-service.ts — the
+// FK lives on Project (sourceLeadId), not Lead, so "has this lead been
+// converted" is a cheap back-relation lookup, not a second denormalized flag.
+// ---------------------------------------------------------------------------
+
+model Lead {
+  id                String   @id @default(uuid())
+  code              String   @unique
+  clientName        String   @map("client_name")
+  contactPersonName String?  @map("contact_person_name")
+  contactPhone      String?  @map("contact_phone")
+  contactEmail      String?  @map("contact_email")
+  source            String? // REFERRAL | WEBSITE | TENDER_BOARD | COLD_OUTREACH | REPEAT_CLIENT | OTHER
+  acquisitionPath   String   @map("acquisition_path") // TENDER | NORMAL — fixed at creation, decides whether a Tender or Quotation applies
+  status            String   @default("NEW") // NEW | QUALIFIED | IN_PROGRESS | NEGOTIATION | WON | LOST | CONVERTED
+  estimatedValue    Decimal? @map("estimated_value") @db.Decimal(12, 2)
+  ownerUserId       String   @map("owner_user_id")
+  lostReason        String?  @map("lost_reason")
+  createdBy         String   @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tender           Tender?
+  quotations       Quotation[]
+  documents        ProjectDocument[]
+  convertedProject Project?
+
+  @@map("leads")
+}
+
+/// Public-sector (HDB/Town Council) tender lifecycle. Status is an ordered
+/// checklist (TENDER_STATUS_ORDER in lib/crm/constants.ts) rather than a
+/// strict single-step chain — optional stages (site visit, query) can be
+/// skipped forward over, but AWARDED/NOT_AWARDED can never be reached
+/// without having passed through SUBMITTED first (enforced in
+/// tender-service.ts, not just the client).
+model Tender {
+  id                         String    @id @default(uuid())
+  leadId                     String    @unique @map("lead_id")
+  tenderReferenceNo          String?   @map("tender_reference_no")
+  issuingBody                String?   @map("issuing_body") // e.g. "HDB", "Tampines Town Council"
+  status                     String    @default("DOCUMENT_COLLECTION")
+  noticeDate                 DateTime? @map("notice_date")
+  documentCollectionDeadline DateTime? @map("document_collection_deadline")
+  siteVisitMandatory         Boolean   @default(false) @map("site_visit_mandatory")
+  siteVisitDate              DateTime? @map("site_visit_date")
+  queryDeadline              DateTime? @map("query_deadline")
+  submissionDeadline         DateTime? @map("submission_deadline")
+  tenderBondAmount           Decimal?  @map("tender_bond_amount") @db.Decimal(12, 2)
+  evaluationMethod           String?   @map("evaluation_method") // LOWEST_PRICE | PRICE_QUALITY_METHOD
+  boqTotal                   Decimal?  @map("boq_total") @db.Decimal(14, 2)
+  bidAmount                  Decimal?  @map("bid_amount") @db.Decimal(14, 2)
+  submittedAt                DateTime? @map("submitted_at")
+  openedAt                   DateTime? @map("opened_at")
+  awardedAt                  DateTime? @map("awarded_at")
+  outcomeNotes               String?   @map("outcome_notes")
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt @map("updated_at")
+
+  lead  Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lines PricingLine[]
+
+  @@map("tenders")
+}
+
+/// Private/negotiated quotation lifecycle (the NORMAL acquisition path).
+/// Versioned (a re-priced quotation bumps `version` rather than mutating a
+/// sent one, matching the immutable-ledger convention used elsewhere).
+model Quotation {
+  id          String    @id @default(uuid())
+  leadId      String    @map("lead_id")
+  version     Int       @default(1)
+  status      String    @default("DRAFT") // DRAFT | SENT | NEGOTIATING | ACCEPTED | REJECTED | EXPIRED
+  totalAmount Decimal   @default(0) @map("total_amount") @db.Decimal(12, 2)
+  validUntil  DateTime? @map("valid_until")
+  notes       String?
+  createdBy   String    @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  lead  Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lines PricingLine[]
+
+  @@map("quotations")
+}
+
+/// Shared BOQ/quotation line-item shape — exactly one of tenderId/quotationId
+/// is set (enforced in the service layer; Prisma has no portable CHECK
+/// constraint for "exactly one of two nullable FKs"). `amount` is stored,
+/// not computed from quantity*unitRate, for audit stability if unitRate is
+/// later corrected — matches ProjectResourceRequest.itemDescription's
+/// "denormalized snapshot" reasoning.
+model PricingLine {
+  id          String   @id @default(uuid())
+  tenderId    String?  @map("tender_id")
+  quotationId String?  @map("quotation_id")
+  itemNo      String   @map("item_no")
+  description String
+  unit        String
+  quantity    Decimal  @db.Decimal(12, 2)
+  unitRate    Decimal  @map("unit_rate") @db.Decimal(12, 2)
+  amount      Decimal  @db.Decimal(14, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tender    Tender?    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  quotation Quotation? @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@map("pricing_lines")
+}
+
+/// Structural replica of EmployeeDocument, shared by the pre-project CRM
+/// stage (leadId) and the post-conversion Project (projectId) — exactly one
+/// of the two is set at any time; lead-conversion-service.ts flips a
+/// document from leadId to projectId at conversion, no copy/duplication.
+model ProjectDocument {
+  id               String   @id @default(uuid())
+  projectId        String?  @map("project_id")
+  leadId           String?  @map("lead_id")
+  documentTypeId   String   @map("document_type_id")
+  storageKey       String   @map("storage_key")
+  originalFileName String   @map("original_file_name")
+  mimeType         String   @map("mime_type")
+  fileSizeBytes    Int      @map("file_size_bytes")
+  checksum         String
+  status           String   @default("UPLOADED")
+  revisionOfId     String?  @map("revision_of_id")
+  isConfidential   Boolean  @default(false) @map("is_confidential")
+  createdBy        String   @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  project      Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lead         Lead?             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  documentType DocumentType      @relation(fields: [documentTypeId], references: [id])
+  revisionOf   ProjectDocument?  @relation("DocRevision", fields: [revisionOfId], references: [id])
+  revisions    ProjectDocument[] @relation("DocRevision")
+
+  @@map("project_documents")
+}
+
+/// Budget-vs-committed-vs-actual per cost category — a lightweight EVM
+/// foundation. `committedAmount` is expected to be rolled up from approved
+/// PurchaseOrders raised against this project (see PurchaseOrder.projectId)
+/// once that linkage is populated; not automatically maintained by a
+/// trigger, updated explicitly by the service layer on PO approval.
+model ProjectBudgetLine {
+  id              String   @id @default(uuid())
+  projectId       String   @map("project_id")
+  category        String // LABOUR | MATERIAL | EQUIPMENT | SUBCONTRACT | OVERHEAD
+  description     String?
+  budgetedAmount  Decimal  @map("budgeted_amount") @db.Decimal(12, 2)
+  committedAmount Decimal  @default(0) @map("committed_amount") @db.Decimal(12, 2)
+  actualAmount    Decimal  @default(0) @map("actual_amount") @db.Decimal(12, 2)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_budget_lines")
+}
+
+/// Monthly interim payment claim — the standard Singapore-contract
+/// mechanism (PSSCOC/SIA-style conditions): contractor submits a claim, a
+/// certifier (Admin/Super Admin, standing in for the contract's
+/// Superintending Officer) signs off a certified amount, retention is held
+/// back from the certified sum. Certification is approval-gated via the
+/// generic engine (PROGRESS_CLAIM module), same shape as PAYROLL_RUN.
+model ProgressClaim {
+  id                  String    @id @default(uuid())
+  projectId           String    @map("project_id")
+  claimNumber         Int       @map("claim_number")
+  claimPeriodTo       DateTime  @map("claim_period_to")
+  claimedAmount       Decimal   @map("claimed_amount") @db.Decimal(12, 2)
+  certifiedAmount     Decimal?  @map("certified_amount") @db.Decimal(12, 2)
+  retentionPercentage Decimal   @default(5) @map("retention_percentage") @db.Decimal(5, 2)
+  retentionHeld       Decimal?  @map("retention_held") @db.Decimal(12, 2)
+  status              String    @default("DRAFT") // DRAFT | PENDING_APPROVAL | CERTIFIED | REJECTED | PAID
+  approvalRequestId   String?   @map("approval_request_id")
+  submittedBy         String?   @map("submitted_by")
+  submittedAt         DateTime? @map("submitted_at")
+  paidAt              DateTime? @map("paid_at")
+  notes               String?
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, claimNumber])
+  @@map("progress_claims")
+}
+
+/// Defect logged during the post-handover Defects Liability Period (DLP) —
+/// see Project.defectsLiabilityPeriodMonths. Deliberately lightweight (no
+/// approval workflow — a defect is a fact reported and later fixed, not a
+/// request needing sign-off) but still per-site so it plugs into existing
+/// site-scoped views.
+model DefectItem {
+  id          String    @id @default(uuid())
+  projectId   String    @map("project_id")
+  siteId      String?   @map("site_id")
+  description String
+  reportedBy  String?   @map("reported_by")
+  reportedAt  DateTime  @default(now()) @map("reported_at")
+  dueDate     DateTime? @map("due_date")
+  status      String    @default("OPEN") // OPEN | IN_PROGRESS | RECTIFIED | DISPUTED | CLOSED
+  rectifiedAt DateTime? @map("rectified_at")
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  site    Site?   @relation(fields: [siteId], references: [id])
+
+  @@map("defect_items")
+}
+
+// ---------------------------------------------------------------------------
+// ERP — Material/Equipment catalog, Suppliers, Warehouses, Stock (now
+// warehouse-scoped — the original central-pool-only decision was reversed;
+// see Warehouse below), Purchase Orders, Goods Receipt, Stock Transfers.
 // ---------------------------------------------------------------------------
 
 model MaterialCategory {
@@ -988,10 +1376,12 @@ model Material {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  category          MaterialCategory?        @relation(fields: [categoryId], references: [id])
-  stockLevel        StockLevel?
-  stockTransactions StockTransaction[]
-  resourceRequests  ProjectResourceRequest[]
+  category           MaterialCategory?        @relation(fields: [categoryId], references: [id])
+  stockLevels        StockLevel[]
+  stockTransactions  StockTransaction[]
+  resourceRequests   ProjectResourceRequest[]
+  purchaseOrderLines PurchaseOrderLine[]
+  stockTransfers     StockTransfer[]
 
   @@map("materials")
 }
@@ -1009,21 +1399,55 @@ model Supplier {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
+  purchaseOrders PurchaseOrder[]
+  documents      SupplierDocument[]
+
   @@map("suppliers")
 }
 
-/// One running balance per material — central pool only (no warehouse/site
-/// dimension), per the locked decision. Maintained transactionally alongside
-/// each StockTransaction insert; StockTransaction is the source of truth,
-/// this is a derived-but-stored total for cheap reads.
+/// Physical stock location. Introduced when the central-pool-only decision
+/// (see the module header comment above) was reversed to support real
+/// multi-site material staging — every StockLevel/StockTransaction row now
+/// carries a warehouseId. `managedByEmployeeId` is the natural hook for the
+/// WAREHOUSE_KEEPER role (lib/authorization/roles.ts) though a warehouse can
+/// exist unmanaged (e.g. during initial setup).
+model Warehouse {
+  id                  String   @id @default(uuid())
+  code                String   @unique
+  name                String
+  address             String?
+  isActive            Boolean  @default(true) @map("is_active")
+  managedByEmployeeId String?  @map("managed_by_employee_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  managedByEmployee Employee?                @relation("WarehouseManager", fields: [managedByEmployeeId], references: [id])
+  stockLevels       StockLevel[]
+  stockTransactions StockTransaction[]
+  purchaseOrders    PurchaseOrder[]
+  resourceRequests  ProjectResourceRequest[]
+  transfersOut      StockTransfer[]          @relation("TransferFrom")
+  transfersIn       StockTransfer[]          @relation("TransferTo")
+
+  @@map("warehouses")
+}
+
+/// One running balance per material *per warehouse* — reversed from the
+/// original central-pool-only decision (see module header). Maintained
+/// transactionally alongside each StockTransaction insert; StockTransaction
+/// is the source of truth, this is a derived-but-stored total for cheap
+/// reads.
 model StockLevel {
   id             String   @id @default(uuid())
-  materialId     String   @unique @map("material_id")
-  quantityOnHand Decimal  @default(0) @db.Decimal(14, 2) @map("quantity_on_hand")
+  materialId     String   @map("material_id")
+  warehouseId    String   @map("warehouse_id")
+  quantityOnHand Decimal  @default(0) @map("quantity_on_hand") @db.Decimal(14, 2)
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  material  Material  @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
 
+  @@unique([materialId, warehouseId])
   @@map("stock_levels")
 }
 
@@ -1038,16 +1462,145 @@ model StockLevel {
 model StockTransaction {
   id            String   @id @default(uuid())
   materialId    String   @map("material_id")
+  warehouseId   String   @map("warehouse_id")
   type          String // RECEIPT | ISSUE | ADJUSTMENT
   quantity      Decimal  @db.Decimal(14, 2)
-  referenceType String?  @map("reference_type") // PURCHASE_ORDER | PROJECT_RESOURCE_REQUEST | MANUAL
+  referenceType String?  @map("reference_type") // PURCHASE_ORDER | PROJECT_RESOURCE_REQUEST | STOCK_TRANSFER | MANUAL
   referenceId   String?  @map("reference_id")
   notes         String?
   createdBy     String?  @map("created_by")
   createdAt     DateTime @default(now()) @map("created_at")
 
-  material Material @relation(fields: [materialId], references: [id])
+  material  Material  @relation(fields: [materialId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
 
   @@index([materialId, createdAt])
+  @@index([warehouseId, createdAt])
   @@map("stock_transactions")
+}
+
+/// Purchase order raised against a Supplier for delivery into a specific
+/// Warehouse. `projectId` is an optional traceability link ("this PO was
+/// raised to restock for project X") — not a hard fulfillment link; a PO
+/// generally restocks the warehouse in general, not one earmarked request.
+model PurchaseOrder {
+  id                   String    @id @default(uuid())
+  poNumber             String    @unique @map("po_number")
+  supplierId           String    @map("supplier_id")
+  warehouseId          String    @map("warehouse_id")
+  projectId            String?   @map("project_id")
+  status               String    @default("DRAFT") // DRAFT | SUBMITTED | APPROVED | PARTIALLY_RECEIVED | RECEIVED | CANCELLED
+  totalAmount          Decimal   @default(0) @map("total_amount") @db.Decimal(12, 2)
+  expectedDeliveryDate DateTime? @map("expected_delivery_date")
+  approvalRequestId    String?   @map("approval_request_id")
+  notes                String?
+  createdBy            String    @map("created_by")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  supplier      Supplier            @relation(fields: [supplierId], references: [id])
+  warehouse     Warehouse           @relation(fields: [warehouseId], references: [id])
+  project       Project?            @relation(fields: [projectId], references: [id])
+  lines         PurchaseOrderLine[]
+  goodsReceipts GoodsReceipt[]
+  documents     SupplierDocument[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  id               String  @id @default(uuid())
+  purchaseOrderId  String  @map("purchase_order_id")
+  materialId       String  @map("material_id")
+  quantityOrdered  Decimal @map("quantity_ordered") @db.Decimal(12, 2)
+  quantityReceived Decimal @default(0) @map("quantity_received") @db.Decimal(12, 2)
+  unitCost         Decimal @map("unit_cost") @db.Decimal(12, 2)
+
+  purchaseOrder     PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  material          Material           @relation(fields: [materialId], references: [id])
+  goodsReceiptLines GoodsReceiptLine[]
+
+  @@map("purchase_order_lines")
+}
+
+/// One goods-receipt event against a PurchaseOrder — a PO can be received
+/// across several partial receipts. Posting a receipt writes StockTransaction
+/// rows via the existing writeStockTransaction (see lib/services/stock-service.ts)
+/// and rolls PurchaseOrderLine.quantityReceived / the parent PO's status.
+model GoodsReceipt {
+  id              String   @id @default(uuid())
+  purchaseOrderId String   @map("purchase_order_id")
+  receivedBy      String   @map("received_by")
+  receivedAt      DateTime @default(now()) @map("received_at")
+  notes           String?
+
+  purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
+  lines         GoodsReceiptLine[]
+
+  @@map("goods_receipts")
+}
+
+model GoodsReceiptLine {
+  id                  String  @id @default(uuid())
+  goodsReceiptId      String  @map("goods_receipt_id")
+  purchaseOrderLineId String  @map("purchase_order_line_id")
+  quantityReceived    Decimal @map("quantity_received") @db.Decimal(12, 2)
+
+  goodsReceipt      GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  purchaseOrderLine PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
+
+  @@map("goods_receipt_lines")
+}
+
+/// Structural replica of EmployeeDocument, scoped to Supplier and/or
+/// PurchaseOrder (either FK may be set independently — e.g. a supplier's
+/// standing contract vs. a one-off PO delivery order).
+model SupplierDocument {
+  id               String   @id @default(uuid())
+  supplierId       String?  @map("supplier_id")
+  purchaseOrderId  String?  @map("purchase_order_id")
+  documentTypeId   String   @map("document_type_id")
+  storageKey       String   @map("storage_key")
+  originalFileName String   @map("original_file_name")
+  mimeType         String   @map("mime_type")
+  fileSizeBytes    Int      @map("file_size_bytes")
+  checksum         String
+  status           String   @default("UPLOADED")
+  isConfidential   Boolean  @default(false) @map("is_confidential")
+  createdBy        String   @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  documentType  DocumentType   @relation(fields: [documentTypeId], references: [id])
+
+  @@map("supplier_documents")
+}
+
+/// Transfer of stock between two warehouses, modeled as two distinct stock
+/// writes rather than one atomic move: an ISSUE from the source warehouse
+/// at dispatch (IN_TRANSIT), and a RECEIPT at the destination only once
+/// someone (typically the destination's WAREHOUSE_KEEPER) confirms physical
+/// receipt — this matches the real-world goods-in-transit gap and gives the
+/// receiving warehouse keeper an actual confirmation step rather than
+/// treating a transfer as instantaneous.
+model StockTransfer {
+  id              String    @id @default(uuid())
+  materialId      String    @map("material_id")
+  fromWarehouseId String    @map("from_warehouse_id")
+  toWarehouseId   String    @map("to_warehouse_id")
+  quantity        Decimal   @db.Decimal(14, 2)
+  status          String    @default("PENDING") // PENDING | IN_TRANSIT | RECEIVED | CANCELLED
+  requestedBy     String    @map("requested_by")
+  dispatchedAt    DateTime? @map("dispatched_at")
+  receivedBy      String?   @map("received_by")
+  receivedAt      DateTime? @map("received_at")
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  material      Material  @relation(fields: [materialId], references: [id])
+  fromWarehouse Warehouse @relation("TransferFrom", fields: [fromWarehouseId], references: [id])
+  toWarehouse   Warehouse @relation("TransferTo", fields: [toWarehouseId], references: [id])
+
+  @@map("stock_transfers")
 }

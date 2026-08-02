@@ -8,6 +8,11 @@ export const createResourceRequestSchema = z.object({
   // Material and stock-service.ts).
   materialId: z.uuid(),
   quantity: z.coerce.number().positive(),
+  // Chosen at request-creation time (not decision time — see
+  // ProjectResourceRequest.fulfillmentWarehouseId's doc comment in
+  // schema.prisma). Optional here because most companies have exactly one
+  // warehouse; the service resolves the default when omitted.
+  fulfillmentWarehouseId: z.uuid().optional().or(z.literal("")),
   neededByDate: z.string().trim().optional().or(z.literal("")),
   notes: z.string().trim().max(1000).optional().or(z.literal("")),
 });

@@ -133,9 +133,9 @@ async function AdminOverview({ role }: { role: UserRole }) {
           />
           <QuickAction
             icon={Boxes}
-            title="Inventory"
-            description="Materials & stock (coming soon)"
-            href="/inventory"
+            title="Warehouses"
+            description="Materials & stock by warehouse"
+            href="/erp/warehouses"
           />
           <QuickAction
             icon={BarChart3}
@@ -222,6 +222,14 @@ const ROLE_QUICK_ACTIONS: Record<
     { icon: CalendarClock, title: "My attendance", description: "Your attendance record", href: "/attendance" },
     { icon: ListChecks, title: "My tasks", description: "Your assigned tasks", href: "/tasks" },
     { icon: CalendarOff, title: "My leave", description: "Your leave requests", href: "/leave" },
+    { icon: UserCircle, title: "My profile", description: "Account details", href: "/profile" },
+  ],
+  // No CRM/warehouse pages exist yet (see the platform expansion plan) —
+  // quick links here are limited to routes that exist today.
+  SALES: [
+    { icon: UserCircle, title: "My profile", description: "Account details", href: "/profile" },
+  ],
+  WAREHOUSE_KEEPER: [
     { icon: UserCircle, title: "My profile", description: "Account details", href: "/profile" },
   ],
 };

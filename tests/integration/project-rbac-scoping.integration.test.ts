@@ -93,14 +93,41 @@ describe("project RBAC scoping (integration)", () => {
     });
   });
 
-  it("never scopes Admin/Super Admin or HR's org-wide allocation grant", async () => {
+  it("never scopes Admin/Super Admin", async () => {
     const project = await createTestProject("rbac-admin-bypass");
     const adminActor = await trackedActor(UserRole.ADMIN, "rbac-admin-1");
     const superAdminActor = await trackedActor(UserRole.SUPER_ADMIN, "rbac-super-admin-1");
-    const hrActor = await trackedActor(UserRole.HR, "rbac-hr-1");
 
     await expect(assertActorCanAccessProject(adminActor, project.id)).resolves.toBeUndefined();
     await expect(assertActorCanAccessProject(superAdminActor, project.id)).resolves.toBeUndefined();
+  });
+
+  // HR's org-wide HR_ALLOCATION_MANAGE grant authorizes managing assignment
+  // records (actions/allocation-actions.ts), not viewing a project's
+  // tasks/budget/documents — it must NOT bypass this check. Regression test
+  // for the "HR still sees Project Management" access-control gap.
+  it("blocks assertActorCanAccessProject for HR on a project they're not assigned to", async () => {
+    const project = await createTestProject("rbac-hr-block");
+    const hrActor = await trackedActor(UserRole.HR, "rbac-hr-1");
+
+    await expect(assertActorCanAccessProject(hrActor, project.id)).rejects.toMatchObject({
+      code: ErrorCode.PROJECT_NOT_FOUND,
+    });
+  });
+
+  it("allows assertActorCanAccessProject for HR actively assigned to the project", async () => {
+    const project = await createTestProject("rbac-hr-allow");
+    const { actor: hrActor, employee } = await createLinkedEmployee(UserRole.HR, "rbac-hr-2");
+    const allocator = await trackedActor(UserRole.ADMIN, "rbac-allocator-3");
+
+    await createAssignment(allocator, {
+      employeeId: employee.id,
+      projectId: project.id,
+      allocationPercentage: 100,
+      startDate: yesterdayIso(),
+      isPrimary: true,
+    });
+
     await expect(assertActorCanAccessProject(hrActor, project.id)).resolves.toBeUndefined();
   });
 });

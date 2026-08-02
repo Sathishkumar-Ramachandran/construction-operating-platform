@@ -7,7 +7,7 @@ import { hasPermission } from "@/lib/services/authorization-service";
 import { assertActorCanAccessProject } from "@/lib/services/project-service";
 import { isActivelyAssignedToProject } from "@/lib/services/employee-allocation-service";
 import { PERMISSIONS } from "@/lib/authorization/permissions";
-import type { CreateTaskInput, UpdateTaskStatusInput } from "@/lib/validation/tasks";
+import type { CreateTaskInput, UpdateTaskStatusInput, UpdateTaskProgressInput } from "@/lib/validation/tasks";
 import type { AuthenticatedUser } from "@/types/auth";
 
 type ActorMeta = { ipAddress?: string | null; userAgent?: string | null };
@@ -77,6 +77,10 @@ export async function createTask(
       assignedToEmployeeId: input.assignedToEmployeeId,
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
       createdBy: actor.id,
+      parentTaskId: input.parentTaskId || null,
+      wbsCode: input.wbsCode || null,
+      plannedStartDate: input.plannedStartDate ? new Date(input.plannedStartDate) : null,
+      plannedEndDate: input.plannedEndDate ? new Date(input.plannedEndDate) : null,
     },
   });
 
@@ -91,6 +95,52 @@ export async function createTask(
   });
 
   return task;
+}
+
+/** WBS view: every task for the project, flat (the client nests by
+ * parentTaskId — same shape as org-hierarchy-service's direct-reports list,
+ * small enough per project to build the tree client-side rather than
+ * round-tripping a recursive query). */
+export async function listWbsForProject(projectId: string) {
+  return db.task.findMany({
+    where: { projectId },
+    include: { assignee: employeeSelect, site: { select: { id: true, code: true, name: true } } },
+    orderBy: [{ wbsCode: "asc" }, { createdAt: "asc" }],
+  });
+}
+
+export async function updateTaskProgress(
+  actor: AuthenticatedUser,
+  input: UpdateTaskProgressInput,
+  meta: ActorMeta = {}
+) {
+  const task = await db.task.findUnique({ where: { id: input.id } });
+  if (!task) throw new AppError(ErrorCode.TASK_NOT_FOUND);
+
+  const actorEmployeeId = await getActorEmployeeId(actor.id);
+  const isOwnTask = actorEmployeeId !== null && actorEmployeeId === task.assignedToEmployeeId;
+  if (!isOwnTask) {
+    const canManage = await hasPermission(actor, PERMISSIONS.PROJECTS_WBS_MANAGE.code);
+    if (!canManage) throw new AppError(ErrorCode.TASK_NOT_AUTHORIZED);
+    await assertActorCanAccessProject(actor, task.projectId);
+  }
+
+  const updated = await db.task.update({
+    where: { id: task.id },
+    data: { percentComplete: input.percentComplete },
+  });
+
+  await recordAuditLog(db, {
+    userId: actor.id,
+    action: AuditAction.TASK_STATUS_CHANGED,
+    entityType: "Task",
+    entityId: task.id,
+    afterData: { percentComplete: input.percentComplete },
+    ipAddress: meta.ipAddress,
+    userAgent: meta.userAgent,
+  });
+
+  return updated;
 }
 
 export async function updateTaskStatus(

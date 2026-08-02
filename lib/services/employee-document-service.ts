@@ -47,7 +47,7 @@ export async function requestDocumentUploadUrl(input: RequestUploadInput) {
     throw new AppError(ErrorCode.DOCUMENT_FILE_TOO_LARGE);
   }
 
-  const storageKey = buildDocumentStorageKey(input.employeeId, input.originalFileName);
+  const storageKey = buildDocumentStorageKey("employee-documents", input.employeeId, input.originalFileName);
   const uploadUrl = await getUploadUrl(storageKey, input.mimeType);
 
   return { uploadUrl, storageKey };
