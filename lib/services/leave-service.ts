@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, type Db } from "@/lib/db";
 import { AppError, ErrorCode } from "@/lib/errors";
 import {
   AttendanceSource,
@@ -115,7 +115,7 @@ async function getHolidayDatesInRange(from: Date, to: Date): Promise<Set<string>
 }
 
 export async function getOrCreateLeaveBalance(
-  client: Prisma.TransactionClient | typeof db,
+  client: Db,
   employeeId: string,
   leaveTypeId: string,
   year: number

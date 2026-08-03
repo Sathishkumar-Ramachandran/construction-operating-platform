@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { AppError, ErrorCode } from "@/lib/errors";
+import type { DocumentTypeScope } from "@/lib/hr/constants";
 import { isStorageConfigured, buildDocumentStorageKey, getUploadUrl } from "@/lib/services/storage-service";
 
 /**
@@ -21,6 +22,7 @@ export async function requestGenericDocumentUploadUrl(input: {
   originalFileName: string;
   mimeType: string;
   fileSizeBytes: number;
+  scope: DocumentTypeScope;
 }) {
   if (!isStorageConfigured()) {
     throw new AppError(ErrorCode.STORAGE_NOT_CONFIGURED);
@@ -29,6 +31,9 @@ export async function requestGenericDocumentUploadUrl(input: {
   const documentType = await db.documentType.findUnique({ where: { id: input.documentTypeId } });
   if (!documentType) throw new AppError(ErrorCode.NOT_FOUND);
 
+  if (!documentType.appliesTo.includes(input.scope)) {
+    throw new AppError(ErrorCode.DOCUMENT_TYPE_NOT_ALLOWED_FOR_SCOPE);
+  }
   if (!documentType.allowedMimeTypes.includes(input.mimeType)) {
     throw new AppError(ErrorCode.DOCUMENT_FILE_TYPE_NOT_ALLOWED);
   }
@@ -40,4 +45,17 @@ export async function requestGenericDocumentUploadUrl(input: {
   const uploadUrl = await getUploadUrl(storageKey, input.mimeType);
 
   return { uploadUrl, storageKey, isConfidential: documentType.isConfidential };
+}
+
+/** Defense in depth for the "confirm" step of each entity's upload flow —
+ * a client could skip requestGenericDocumentUploadUrl (which already
+ * checks this) and call an entity's confirm function directly with an
+ * arbitrary documentTypeId, so the same check is repeated at the point
+ * the DB row actually gets created. */
+export async function assertDocumentTypeAppliesToScope(documentTypeId: string, scope: DocumentTypeScope) {
+  const documentType = await db.documentType.findUnique({ where: { id: documentTypeId } });
+  if (!documentType) throw new AppError(ErrorCode.NOT_FOUND);
+  if (!documentType.appliesTo.includes(scope)) {
+    throw new AppError(ErrorCode.DOCUMENT_TYPE_NOT_ALLOWED_FOR_SCOPE);
+  }
 }

@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { requirePermission } from "@/lib/auth/guards";
+import { withTenantPermission } from "@/lib/auth/guards";
 import { PERMISSIONS } from "@/lib/authorization/permissions";
 import {
   createUserSchema,
@@ -33,104 +33,109 @@ export type ActionResult<T = unknown> =
 export async function createUserAction(
   input: unknown
 ): Promise<ActionResult<CreateUserResult>> {
-  const actor = await requirePermission(PERMISSIONS.USERS_CREATE.code);
-  const parsed = createUserSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
-  }
+  return withTenantPermission(PERMISSIONS.USERS_CREATE.code, async (actor) => {
+    const parsed = createUserSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+    }
 
-  try {
-    const meta = await getRequestMeta();
-    const result = await userService.createUser(actor, parsed.data, meta);
-    revalidatePath("/administration/users");
-    return { ok: true, data: result };
-  } catch (error) {
-    if (isAppError(error)) return { ok: false, message: error.message };
-    throw error;
-  }
+    try {
+      const meta = await getRequestMeta();
+      const result = await userService.createUser(actor, parsed.data, meta);
+      revalidatePath("/administration/users");
+      return { ok: true, data: result };
+    } catch (error) {
+      if (isAppError(error)) return { ok: false, message: error.message };
+      throw error;
+    }
+  });
 }
 
 export async function resetUserPasswordAction(
   input: unknown
 ): Promise<ActionResult<{ temporaryPassword: string }>> {
-  const actor = await requirePermission(PERMISSIONS.USERS_RESET_PASSWORD.code);
-  const parsed = adminResetPasswordSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
-  }
+  return withTenantPermission(PERMISSIONS.USERS_RESET_PASSWORD.code, async (actor) => {
+    const parsed = adminResetPasswordSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+    }
 
-  try {
-    const meta = await getRequestMeta();
-    const result = await adminResetPassword(
-      actor,
-      parsed.data.userId,
-      parsed.data.reason,
-      meta
-    );
-    revalidatePath("/administration/users");
-    return { ok: true, data: { temporaryPassword: result.temporaryPassword } };
-  } catch (error) {
-    if (isAppError(error)) return { ok: false, message: error.message };
-    throw error;
-  }
+    try {
+      const meta = await getRequestMeta();
+      const result = await adminResetPassword(
+        actor,
+        parsed.data.userId,
+        parsed.data.reason,
+        meta
+      );
+      revalidatePath("/administration/users");
+      return { ok: true, data: { temporaryPassword: result.temporaryPassword } };
+    } catch (error) {
+      if (isAppError(error)) return { ok: false, message: error.message };
+      throw error;
+    }
+  });
 }
 
 export async function updateUserAction(
   input: unknown
 ): Promise<ActionResult> {
-  const actor = await requirePermission(PERMISSIONS.USERS_UPDATE.code);
-  const parsed = updateUserSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
-  }
+  return withTenantPermission(PERMISSIONS.USERS_UPDATE.code, async (actor) => {
+    const parsed = updateUserSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+    }
 
-  try {
-    const meta = await getRequestMeta();
-    await userService.updateUser(actor, parsed.data, meta);
-    revalidatePath("/administration/users");
-    return { ok: true, data: undefined };
-  } catch (error) {
-    if (isAppError(error)) return { ok: false, message: error.message };
-    throw error;
-  }
+    try {
+      const meta = await getRequestMeta();
+      await userService.updateUser(actor, parsed.data, meta);
+      revalidatePath("/administration/users");
+      return { ok: true, data: undefined };
+    } catch (error) {
+      if (isAppError(error)) return { ok: false, message: error.message };
+      throw error;
+    }
+  });
 }
 
 export async function assignRoleAction(
   input: unknown
 ): Promise<ActionResult> {
-  const actor = await requirePermission(PERMISSIONS.USERS_ASSIGN_ROLE.code);
-  const parsed = assignRoleSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
-  }
+  return withTenantPermission(PERMISSIONS.USERS_ASSIGN_ROLE.code, async (actor) => {
+    const parsed = assignRoleSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+    }
 
-  try {
-    const meta = await getRequestMeta();
-    await userService.assignRole(actor, parsed.data, meta);
-    revalidatePath("/administration/users");
-    return { ok: true, data: undefined };
-  } catch (error) {
-    if (isAppError(error)) return { ok: false, message: error.message };
-    throw error;
-  }
+    try {
+      const meta = await getRequestMeta();
+      await userService.assignRole(actor, parsed.data, meta);
+      revalidatePath("/administration/users");
+      return { ok: true, data: undefined };
+    } catch (error) {
+      if (isAppError(error)) return { ok: false, message: error.message };
+      throw error;
+    }
+  });
 }
 
 export async function setUserActiveAction(
   input: unknown
 ): Promise<ActionResult> {
-  const actor = await requirePermission(PERMISSIONS.USERS_DEACTIVATE.code);
-  const parsed = setUserActiveSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
-  }
+  return withTenantPermission(PERMISSIONS.USERS_DEACTIVATE.code, async (actor) => {
+    const parsed = setUserActiveSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+    }
 
-  try {
-    const meta = await getRequestMeta();
-    await userService.setUserActive(actor, parsed.data, meta);
-    revalidatePath("/administration/users");
-    return { ok: true, data: undefined };
-  } catch (error) {
-    if (isAppError(error)) return { ok: false, message: error.message };
-    throw error;
-  }
+    try {
+      const meta = await getRequestMeta();
+      await userService.setUserActive(actor, parsed.data, meta);
+      revalidatePath("/administration/users");
+      return { ok: true, data: undefined };
+    } catch (error) {
+      if (isAppError(error)) return { ok: false, message: error.message };
+      throw error;
+    }
+  });
 }

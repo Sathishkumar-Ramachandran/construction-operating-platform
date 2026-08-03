@@ -1,6 +1,8 @@
-# Excell Enterprises — Construction Operating Platform
+# Construction Operating Platform
 
-A mobile-first, premium operating platform unifying HRMS, Project Management, Inventory, Procurement, Attendance, Approvals, and Reporting for Excell Enterprises. This repository currently contains the **platform foundation**: authentication, role-based authorization, the application shell, and user administration. Business modules (HRMS, Projects, Inventory, etc.) are placeholders pending future work.
+A mobile-first, premium **multi-tenant** operating platform unifying HRMS, Payroll, CRM (Lead-to-Delivery), Project Management, and ERP (materials, warehouses, procurement). Each company using the platform (a "tenant") gets fully isolated data — its own employees, projects, leads, materials, and users — behind one shared application.
+
+> **Looking for how to use the app day-to-day?** See the [User Guide](docs/USER_GUIDE.md) — it covers every module, role, and the end-to-end lead-to-delivery workflow. This README is developer/setup-focused.
 
 ## Tech stack
 
@@ -31,7 +33,8 @@ Fill in `.env`:
 | `DIRECT_URL` | Direct/non-pooled connection string, used only for migrations. If your database isn't behind a connection pooler, this can equal `DATABASE_URL`. |
 | `AUTH_SECRET` | Long random secret (`openssl rand -base64 32`), used to pepper session-token hashes |
 | `AUTH_URL` | Canonical app URL, e.g. `http://localhost:3000` |
-| `SEED_SUPER_ADMIN_NAME` / `_EMAIL` / `_PASSWORD` | Used once by `db:seed` to create the initial Super Admin if one doesn't already exist |
+| `SEED_SUPER_ADMIN_NAME` / `_EMAIL` / `_PASSWORD` | `_PASSWORD` is used by `db:seed` as the shared initial password for every seeded per-company user (see [Companies & seeded users](#companies--seeded-users)); `_NAME`/`_EMAIL` are unused by the current seed data but still validated at boot. |
+| `SEED_PLATFORM_ADMIN_NAME` / `_EMAIL` / `_PASSWORD` | Used once by `db:seed` to create the initial [Platform Admin](#multi-tenancy--platform-admin) if one doesn't already exist |
 
 The app validates these at boot (`lib/env.ts` + `instrumentation.ts`) and fails fast with a clear error if anything is missing or malformed.
 
@@ -43,17 +46,37 @@ The app validates these at boot (`lib/env.ts` + `instrumentation.ts`) and fails 
 npm install
 npm run db:generate     # generate the Prisma client
 npm run db:migrate      # apply migrations (interactive, dev)
-npm run db:seed         # idempotent: seeds roles, permissions, role-permissions, and the Super Admin
+npm run db:seed         # idempotent: seeds companies, roles, permissions, and users — see below
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and sign in with the `SEED_SUPER_ADMIN_EMAIL` / `SEED_SUPER_ADMIN_PASSWORD` you configured. **Change that password immediately after first login** — the seed script never overwrites an existing Super Admin's password.
+Open [http://localhost:3000](http://localhost:3000) and sign in with one of the [seeded users](#companies--seeded-users) below. **Change that password immediately after first login.**
 
 ### Production migrations
 
 ```bash
 npm run db:migrate:deploy
 ```
+
+### Companies & seeded users
+
+`prisma/seed.ts` is idempotent and creates two companies, each with a Super Admin and an HR user, all sharing `SEED_SUPER_ADMIN_PASSWORD` as their initial password:
+
+| Company | Slug | Super Admin | HR |
+|---|---|---|---|
+| Excell Enterprise | `excell-enterprise` | `krish@excellenterprise.com.sg` | `hr@excellenterprise.com.sg` |
+| Accessplus | `accessplus` | `krish@accessplus.com.sg` | `hr@accessplus.com.sg` |
+
+Every model in the schema (except `Company`/`PlatformAdmin`/`PlatformAdminSession`) is scoped by `companyId`, enforced centrally — see [Multi-tenancy & Platform Admin](#multi-tenancy--platform-admin). To add another company, sign in to `/platform-admin` (below) rather than hand-editing `prisma/seed.ts`; the seed file is meant to describe this fixed starter set, not every tenant that will ever exist.
+
+## Multi-tenancy & Platform Admin
+
+This is a single application instance serving multiple companies ("tenants"), each with fully isolated data:
+
+- **Tenant scoping**: `lib/db.ts` wraps Prisma in an `AsyncLocalStorage`-based extension. Every `db.<model>.<op>()` call automatically gets `companyId` injected into its `where`/`data` — a call site that isn't wrapped in `withTenant(companyId, fn)` (see the `withTenant*` guards in `lib/auth/guards.ts`) throws loudly instead of silently leaking or returning cross-tenant data. `rawDb` is the deliberate, narrowly-used escape hatch for genuinely cross-tenant code (auth bootstrap, `prisma/seed.ts`, the Platform Admin panel).
+- **Company resolution**: single domain, no subdomains/path prefixes. A user's session is pinned to the one company their account belongs to at login.
+- **Deactivation**: a company can be deactivated by a Platform Admin — this is checked on every request (not just at login), so it takes effect immediately even for an already-signed-in session.
+- **Platform Admin** (`/platform-admin`): a separate identity/table from any per-company `User` (own login, own session cookie, own `requirePlatformAdmin()` guard) — the internal, admin-only control panel used to create new companies, activate/deactivate them, and provision each one's first Admin user. There is no public signup and no per-tenant billing; provisioning is deliberately internal-only.
 
 ### Other scripts
 
@@ -68,7 +91,7 @@ npm run build         # Production build (also type-checks)
 
 ## Roles
 
-`SUPER_ADMIN`, `ADMIN`, `MANAGER`, `HR`, `TEAM_MEMBER` — see `lib/authorization/roles.ts` and `lib/authorization/permissions.ts` for the full role/permission matrix, and `AGENTS.md` for the complete specification this foundation implements.
+`SUPER_ADMIN`, `ADMIN`, `MANAGER`, `HR`, `SALES`, `WAREHOUSE_KEEPER`, `TEAM_MEMBER` — see `lib/authorization/roles.ts` and `lib/authorization/permissions.ts` for the full role/permission matrix, and the [User Guide](docs/USER_GUIDE.md#2-roles--what-each-one-can-see) for what each one can see. Every role is scoped per-company — see [Multi-tenancy & Platform Admin](#multi-tenancy--platform-admin).
 
 ## HRMS module
 
@@ -85,7 +108,20 @@ Beyond the platform foundation, this repo includes an HRMS foundation phase:
 - **Work location**: `Employee.workLocation` (Office/Site) is a filterable attribute on the directory and profile — office staff and site workers share the same role, distinguished only by this field.
 - **Leave**: `/leave` — self-service leave requests (leave type, date range with half-day support on either boundary, optional reason) riding the generic Approval Engine (below) rather than bespoke approval logic; a per-employee balance summary (`entitled + carriedForward - used`, "used" always computed live from approved requests, never stored, to avoid drift); a "Leave Types" tab in `/hr-settings` (Annual, Sick, Hospitalization, Maternity, Paternity, Shared Parental, Childcare, Compassionate, Unpaid seeded by default — NS/Reservist leave is deliberately excluded, deferred to Payroll since it involves make-up-pay claims); and, for HR/Admin/Manager, a team leave board. Approval routes to the requester's reporting manager, falling back to any `HR.LEAVE.MANAGE` holder if none is set. On approval, `ON_LEAVE` `AttendanceRecord` rows are written for the request's working days only (weekends/holidays inside the range are skipped) — the existing Attendance history/board/today-view already prefer a real record over derivation, so no Attendance code needed to change.
 
-**Not built yet** (no placeholder nav/routes were added for these — see the project memory / implementation summary for the full rationale): Payroll (on hold), Employee Calendar, the interactive Org Graph, background-job-driven expiry notifications, and a template-driven onboarding/offboarding checklist engine (a simplified single-action offboarding flow exists instead).
+Payroll itself now has its own module (below) — HRMS feeds it via Attendance/Leave. **Not built yet** (no placeholder nav/routes were added for these): Employee Calendar, the interactive Org Graph, background-job-driven expiry notifications, and a template-driven onboarding/offboarding checklist engine (a simplified single-action offboarding flow exists instead).
+
+## Payroll module
+
+`/payroll` — visible to HR/Admin/Super Admin. See the [User Guide](docs/USER_GUIDE.md#5-payroll) for the full monthly Open → Processing → Pending Approval → Approved → Paid → Closed cycle. Highlights for developers:
+
+- **CPF computation** is isolated in `lib/services/cpf-computation-service.ts`, driven by an admin-editable `CpfContributionRate` table (age-banded, effective-dated) rather than hardcoded constants — MOM/CPF rates change periodically.
+- **Payroll runs** ride the same generic Approval Engine as everything else (registered as `"PAYROLL_RUN"` in `lib/services/approval-registry.ts`) — preparer (HR) and approver (Admin/Super Admin) are always different people.
+- **IR8A export** (`lib/services/iras-export-service.ts`) generates an IRAS-format file for manual upload — no live CPF/IRAS API integration.
+- Every employee with a linked account can view their own payslips; only HR/Admin/Super Admin can view everyone's.
+
+## CRM module
+
+`/crm/leads` — visible to Sales/Admin/Super Admin. See the [User Guide](docs/USER_GUIDE.md#6-crm--leads-tenders--quotations) for the full lead lifecycle. A `Lead` forks by `acquisitionPath` into a **Tender** checklist (public-sector BOQ/bid workflow) or a **Quotation** flow (direct/negotiated deals); only Admin/Super Admin can convert a `WON` lead into a real `Project` (`lib/services/lead-conversion-service.ts`), which seeds the project's budget from the tender/quotation and carries over its documents.
 
 ## Approvals
 
@@ -109,39 +145,46 @@ This is deliberately built *before* the modules that need approve/reject flows e
 - **Manager**: sees only projects they're actively assigned to, both in the `/projects` list and by direct URL — a new `assertActorCanAccessProject` check (`lib/services/project-service.ts`) closes this at the service layer for every project-scoped write (assignments, resource requests, tasks), not only at the page boundary.
 - **Team Member**: sees only their assigned project(s), and within one gets a stripped-down workspace — just the Phases (their own site) and Tasks (their own tasks) tabs, no Overview/Team/Inventory Requests. Confidential fields (client name, address, estimated budget) and other team members' data are stripped **server-side** before the page's props are sent to the browser — not merely hidden by the UI — since anything passed as a prop to a client component ships in the page's data payload regardless of whether it's rendered.
 
-## ERP module (in progress)
+## ERP module
 
-`/erp` (its own "ERP" nav section, gated `INVENTORY.MANAGE`) — a tabbed console (Materials & Equipment / Categories / Suppliers), same "one console instead of many URLs" pattern as `/hr-settings`, reusing the generic `MasterDataPage`/`SimpleMasterDataSettings` components (now generalized with an optional `apiBasePath`/`queryKeyPrefix` so non-HR modules can reuse them without duplicating the list/toggle table).
+`/erp` (its own "ERP" nav section) — a tabbed console (Materials & Equipment / Categories / Suppliers), same "one console instead of many URLs" pattern as `/hr-settings`, reusing the generic `MasterDataPage`/`SimpleMasterDataSettings` components (generalized with an optional `apiBasePath`/`queryKeyPrefix` so non-HR modules can reuse them without duplicating the list/toggle table). See the [User Guide](docs/USER_GUIDE.md#8-erp--materials-warehouses-purchase-orders) for the full Warehouse/Purchase Order/Goods Receipt/Stock Transfer workflow.
 
-- **Materials & Equipment**: a unified `Material` catalog (`type: MATERIAL | EQUIPMENT | SERVICE` — one model instead of near-duplicate tables) with code/name/category/unit/reference cost/reorder level. Every material gets a `StockLevel` row (starts at 0) the moment it's created.
-- **Categories**: simple `MaterialCategory` lookup (code + name), identical shape to every other HR lookup type.
-- **Suppliers**: `Supplier` master data (contact, phone, email, address).
-- **Stock**: a `StockLevel` (current balance) + `StockTransaction` (immutable ledger — RECEIPT/ISSUE/ADJUSTMENT, never updated/deleted, same audit-trail-not-just-current-state precedent as `SiteStageHistory`) exist in the schema now, **central pool only** (no per-warehouse/per-site dimension, per an explicit scope decision) — the service/UI to actually move stock (Purchase Order receipts, resource-request issues) is the next phase.
-
-**Not yet built** (tracked as the next phases in sequence, see project memory for the full locked domain model): Purchase Orders (riding the existing generic Approval Engine, same as `ProjectResourceRequest` does today), and the integration point that started this — `ProjectResourceRequest.itemDescription` becoming a real `materialId` reference into this catalog instead of free text.
+- **Materials & Equipment**: a unified `Material` catalog (`type: MATERIAL | EQUIPMENT | SERVICE` — one model instead of near-duplicate tables) with code/name/category/unit/reference cost/reorder level. Every material gets a `StockLevel` row per warehouse.
+- **Warehouses** (`/erp/warehouses`): stock is tracked **per warehouse** (`[materialId, warehouseId]`), each with an assigned Warehouse Keeper — not one central pool.
+- **Purchase Orders** (`/erp/purchase-orders`): `Draft → Submitted → Approved → Partially Received / Received` (or `Cancelled`), riding the same generic Approval Engine (preparer ≠ approver). Goods Receipts write real stock-in `StockTransaction` rows.
+- **Stock Transfers** (`/erp/stock-transfers`): `Pending → In Transit → Received`, with two distinct ledger writes (dispatch deducts the source warehouse, receipt credits the destination) matching real goods-in-transit timing.
+- **Suppliers/Categories**: simple master-data lookups, identical shape to every other HR/ERP lookup type.
 
 ## Roadmap
 
-The build-out order was revised 2026-07-19: the user asked for ERP and CRM to be built now, fully, together — not deferred as originally planned — with the whole app integrated end to end (Materials/Inventory requests must come from a real ERP catalog, not free text; Projects must link to a real CRM Client, not a free-text name). Updated order: HRMS hardening → Approvals engine → Leave → Project Management → **ERP (core catalog done, Purchase Orders + stock movement + PM integration next) + CRM (not started)** → Payroll (on hold) → Onboarding/Offboarding checklists. Tracked as project memory (`project-hrms-phase1`, `project-platform-roadmap`, `project-foundation-stack`) rather than in this file — each phase gets its own detailed plan when picked up.
+Phases 0–3 of the original build-out plan (RBAC hardening, Payroll, CRM/Lead-to-Delivery Project Management, ERP + Warehouses) and the multi-tenancy foundation (Company/Platform Admin, `companyId` scoping on every model — see [Multi-tenancy & Platform Admin](#multi-tenancy--platform-admin)) are all complete and verified end-to-end. Deferred, tracked items (not started): a real CRM Client/Account/Contact entity, an Invoice/Payment/AR model beyond Progress Claims, a task-dependency/Change-Order model, ERP 3-way supplier-invoice matching, automatic Budget `actualAmount` population from Payroll/Progress Claims, and proactive expiry-notification jobs. Navigation/IA reorganization into a more integrated feel is deferred until those modules exist to organize around.
 
 ## Project structure
 
 ```
-app/                    Routes (App Router) — (auth), (protected) route groups
-actions/                Server Actions (auth, user administration, employees, allocation, HR documents, HR master data, projects)
+app/
+  (auth)/               Login, change-password (unauthenticated-reachable)
+  (protected)/           Every per-company module — dashboard, employees, attendance, leave,
+                          payroll, crm, projects, erp, approvals, reports, administration
+  platform-admin/         Separate, cross-tenant control panel (its own login/session) — not
+                          nested inside (protected); creates/activates companies
+actions/                Server Actions, one file per module (auth, employees, payroll, crm, erp, projects, ...)
 lib/
-  auth/                 Session cookies, current-user resolution, requireUser/requireRole/requirePermission guards
+  auth/                 Session cookies, current-user resolution, withTenant*/requireUser guards
   authorization/        Role/permission constants, navigation config
-  hr/                   HR domain constants (employment status, workforce availability, etc.) and pure display helpers
+  db.ts                 Tenant-scoped Prisma client (AsyncLocalStorage extension) — see
+                        Multi-tenancy & Platform Admin, above
+  hr/, payroll/, erp/, projects/   Per-module domain constants and pure display helpers
   security/             AES-256-GCM field encryption for sensitive HR data
   services/             Service layer — all business logic and DB transactions live here
   validation/           Zod schemas
 components/
   hr/                   Shared HR master-data settings table/dialog components
   layout/               App shell (sidebar, mobile nav, top header)
-  shared/                Reusable page-level UI (PageHeader, EmptyState, etc.)
+  shared/                Reusable page-level UI (PageHeader, EmptyState, DocumentManagerPanel, etc.)
   ui/                    shadcn/ui primitives
-prisma/                 Schema, migrations, seed script
+prisma/                 Schema, migrations, seed script (two companies + their users — see above)
+scripts/                One-off/maintenance scripts (drift audit, smoke-test session)
 tests/
   unit/                  Pure-logic tests (no DB)
   integration/            Service-layer tests against the real database

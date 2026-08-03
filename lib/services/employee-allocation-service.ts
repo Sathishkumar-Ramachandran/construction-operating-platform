@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, type Db } from "@/lib/db";
 import { AppError, ErrorCode } from "@/lib/errors";
 import { AssignmentStatus, EmploymentStatus, INACTIVE_EMPLOYMENT_STATUSES } from "@/lib/hr/constants";
 import { ProjectStatus } from "@/lib/projects/constants";
@@ -6,7 +6,6 @@ import { AuditAction, recordAuditLog } from "@/lib/services/audit-service";
 import { assertActorCanManageAssignmentsForProject } from "@/lib/services/project-service";
 import type { CreateAssignmentInput, EndAssignmentInput } from "@/lib/validation/allocation";
 import type { AuthenticatedUser } from "@/types/auth";
-import type { Prisma } from "@/generated/prisma/client";
 
 type ActorMeta = { ipAddress?: string | null; userAgent?: string | null };
 
@@ -230,7 +229,7 @@ export async function endAssignment(
 
 /** Used by offboarding: closes every active/planned assignment immediately. */
 export async function closeAllActiveAssignments(
-  tx: Prisma.TransactionClient,
+  tx: Db,
   employeeId: string
 ): Promise<number> {
   const result = await tx.employeeProjectAssignment.updateMany({

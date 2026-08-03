@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, currentCompanyId } from "@/lib/db";
 import { AppError, ErrorCode } from "@/lib/errors";
 import { AuditAction, recordAuditLog } from "@/lib/services/audit-service";
 import { DEFAULT_WAREHOUSE_CODE } from "@/lib/erp/constants";
@@ -24,7 +24,9 @@ export async function getWarehouseById(id: string) {
  * require an explicit choice, since guessing among 2+ warehouses would be
  * silently wrong). */
 export async function getDefaultWarehouse() {
-  const main = await db.warehouse.findUnique({ where: { code: DEFAULT_WAREHOUSE_CODE } });
+  const main = await db.warehouse.findUnique({
+    where: { companyId_code: { companyId: currentCompanyId(), code: DEFAULT_WAREHOUSE_CODE } },
+  });
   if (main) return main;
 
   const active = await db.warehouse.findMany({ where: { isActive: true }, take: 2 });
@@ -32,7 +34,9 @@ export async function getDefaultWarehouse() {
 }
 
 export async function createWarehouse(actor: AuthenticatedUser, input: WarehouseInput) {
-  const existing = await db.warehouse.findUnique({ where: { code: input.code } });
+  const existing = await db.warehouse.findUnique({
+    where: { companyId_code: { companyId: actor.companyId, code: input.code } },
+  });
   if (existing) throw new AppError(ErrorCode.WAREHOUSE_CODE_IN_USE);
 
   const warehouse = await db.warehouse.create({
@@ -60,7 +64,9 @@ export async function updateWarehouse(actor: AuthenticatedUser, id: string, inpu
   if (!existing) throw new AppError(ErrorCode.WAREHOUSE_NOT_FOUND);
 
   if (input.code !== existing.code) {
-    const codeTaken = await db.warehouse.findUnique({ where: { code: input.code } });
+    const codeTaken = await db.warehouse.findUnique({
+      where: { companyId_code: { companyId: actor.companyId, code: input.code } },
+    });
     if (codeTaken) throw new AppError(ErrorCode.WAREHOUSE_CODE_IN_USE);
   }
 

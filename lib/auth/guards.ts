@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { hasPermission, hasRole } from "@/lib/services/authorization-service";
+import { withTenant } from "@/lib/db";
 import type { UserRole } from "@/lib/authorization/roles";
 import type { PermissionCode } from "@/lib/authorization/permissions";
 import type { AuthenticatedUser } from "@/types/auth";
@@ -96,4 +97,98 @@ export async function requireApiPermission(
     return { response: forbiddenResponse() };
   }
   return { user: result.user };
+}
+
+/**
+ * `withTenant*` wrappers — the actual entry points every tenant-scoped
+ * page/action/route must call instead of the plain `require*` guards above.
+ *
+ * `AsyncLocalStorage.run()` only covers work started *inside* its callback,
+ * so `fn` must be the entire rest of the handler's body (every `db.*` call
+ * it makes, directly or transitively), not just a check performed before
+ * returning to the caller. Call shape:
+ *
+ *   export async function ProjectsPage() {
+ *     return withTenantPermission(PERMISSIONS.PROJECTS_VIEW.code, async (user) => {
+ *       const projects = await listProjects(user);
+ *       return <ProjectsView projects={projects} />;
+ *     });
+ *   }
+ */
+export async function withTenantUser<T>(
+  fn: (user: AuthenticatedUser) => Promise<T>
+): Promise<T> {
+  const user = await requireUser();
+  return withTenant(user.companyId, () => fn(user));
+}
+
+/**
+ * These variants deliberately do NOT reuse requireRole/requirePermission/
+ * requireAnyPermission/requireApiPermission — those call hasRole/
+ * hasPermission BEFORE any tenant context exists, and hasPermission queries
+ * the tenant-scoped `db` for every role except SUPER_ADMIN (which
+ * short-circuits without touching the database). Calling them here would
+ * throw "no companyId in context" for every non-SUPER_ADMIN user. Instead,
+ * only the cheap, DB-free user lookup (requireUser/requireApiUser) runs
+ * before withTenant(); the permission/role check itself runs inside it.
+ */
+export async function withTenantRole<T>(
+  roles: UserRole[],
+  fn: (user: AuthenticatedUser) => Promise<T>
+): Promise<T> {
+  const user = await requireUser();
+  return withTenant(user.companyId, async () => {
+    const allowed = await hasRole(user, roles);
+    if (!allowed) redirect("/unauthorized");
+    return fn(user);
+  });
+}
+
+export async function withTenantPermission<T>(
+  code: PermissionCode,
+  fn: (user: AuthenticatedUser) => Promise<T>
+): Promise<T> {
+  const user = await requireUser();
+  return withTenant(user.companyId, async () => {
+    const allowed = await hasPermission(user, code);
+    if (!allowed) redirect("/unauthorized");
+    return fn(user);
+  });
+}
+
+export async function withTenantAnyPermission<T>(
+  codes: PermissionCode[],
+  fn: (user: AuthenticatedUser) => Promise<T>
+): Promise<T> {
+  const user = await requireUser();
+  return withTenant(user.companyId, async () => {
+    for (const code of codes) {
+      if (await hasPermission(user, code)) return fn(user);
+    }
+    redirect("/unauthorized");
+  });
+}
+
+/** For Route Handlers — mirrors ApiGuardResult's shape so callers keep their
+ * existing `if (result.response) return result.response;` early-return
+ * pattern, just wrapped around a tenant context instead of a bare user. */
+export async function withTenantApiUser<T>(
+  fn: (user: AuthenticatedUser) => Promise<T | Response>
+): Promise<T | Response> {
+  const result = await requireApiUser();
+  if (result.response) return result.response;
+  return withTenant(result.user.companyId, () => fn(result.user));
+}
+
+export async function withTenantApiPermission<T>(
+  code: PermissionCode,
+  fn: (user: AuthenticatedUser) => Promise<T | Response>
+): Promise<T | Response> {
+  const result = await requireApiUser();
+  if (result.response) return result.response;
+  return withTenant(result.user.companyId, async () => {
+    const allowed = await hasPermission(result.user, code);
+    if (!allowed) return forbiddenResponse();
+    return fn(result.user);
+  });
 }

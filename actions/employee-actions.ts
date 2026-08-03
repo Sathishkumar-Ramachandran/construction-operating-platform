@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { requirePermission, requireUser } from "@/lib/auth/guards";
+import { withTenantPermission, withTenantUser } from "@/lib/auth/guards";
 import { PERMISSIONS } from "@/lib/authorization/permissions";
 import {
   createEmployeeSchema,
@@ -26,79 +26,83 @@ async function getRequestMeta() {
 }
 
 export async function createEmployeeAction(input: unknown): Promise<ActionResult> {
-  const actor = await requirePermission(PERMISSIONS.HR_EMPLOYEE_CREATE.code);
-  const parsed = createEmployeeSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
-  }
+  return withTenantPermission(PERMISSIONS.HR_EMPLOYEE_CREATE.code, async (actor) => {
+    const parsed = createEmployeeSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+    }
 
-  try {
-    const meta = await getRequestMeta();
-    const employee = await employeeService.createEmployee(actor, parsed.data, meta);
-    revalidatePath("/employees");
-    return { ok: true, data: employee };
-  } catch (error) {
-    if (isAppError(error)) return { ok: false, message: error.message };
-    throw error;
-  }
+    try {
+      const meta = await getRequestMeta();
+      const employee = await employeeService.createEmployee(actor, parsed.data, meta);
+      revalidatePath("/employees");
+      return { ok: true, data: employee };
+    } catch (error) {
+      if (isAppError(error)) return { ok: false, message: error.message };
+      throw error;
+    }
+  });
 }
 
 export async function updateEmployeeAction(input: unknown): Promise<ActionResult> {
-  const actor = await requirePermission(PERMISSIONS.HR_EMPLOYEE_UPDATE.code);
-  const parsed = updateEmployeeSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
-  }
+  return withTenantPermission(PERMISSIONS.HR_EMPLOYEE_UPDATE.code, async (actor) => {
+    const parsed = updateEmployeeSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+    }
 
-  try {
-    const meta = await getRequestMeta();
-    const employee = await employeeService.updateEmployee(actor, parsed.data, meta);
-    revalidatePath("/employees");
-    revalidatePath(`/employees/${parsed.data.id}`);
-    return { ok: true, data: employee };
-  } catch (error) {
-    if (isAppError(error)) return { ok: false, message: error.message };
-    throw error;
-  }
+    try {
+      const meta = await getRequestMeta();
+      const employee = await employeeService.updateEmployee(actor, parsed.data, meta);
+      revalidatePath("/employees");
+      revalidatePath(`/employees/${parsed.data.id}`);
+      return { ok: true, data: employee };
+    } catch (error) {
+      if (isAppError(error)) return { ok: false, message: error.message };
+      throw error;
+    }
+  });
 }
 
 export async function changeEmploymentStatusAction(
   input: unknown
 ): Promise<ActionResult> {
-  const actor = await requirePermission(PERMISSIONS.HR_EMPLOYEE_DEACTIVATE.code);
-  const parsed = changeEmploymentStatusSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
-  }
+  return withTenantPermission(PERMISSIONS.HR_EMPLOYEE_DEACTIVATE.code, async (actor) => {
+    const parsed = changeEmploymentStatusSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+    }
 
-  try {
-    const meta = await getRequestMeta();
-    const employee = await changeEmploymentStatus(actor, parsed.data, meta);
-    revalidatePath(`/employees/${parsed.data.employeeId}`);
-    return { ok: true, data: employee };
-  } catch (error) {
-    if (isAppError(error)) return { ok: false, message: error.message };
-    throw error;
-  }
+    try {
+      const meta = await getRequestMeta();
+      const employee = await changeEmploymentStatus(actor, parsed.data, meta);
+      revalidatePath(`/employees/${parsed.data.employeeId}`);
+      return { ok: true, data: employee };
+    } catch (error) {
+      if (isAppError(error)) return { ok: false, message: error.message };
+      throw error;
+    }
+  });
 }
 
 export async function offboardEmployeeAction(input: unknown): Promise<ActionResult> {
-  const actor = await requirePermission(PERMISSIONS.HR_EMPLOYEE_OFFBOARD.code);
-  const parsed = offboardEmployeeSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
-  }
+  return withTenantPermission(PERMISSIONS.HR_EMPLOYEE_OFFBOARD.code, async (actor) => {
+    const parsed = offboardEmployeeSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+    }
 
-  try {
-    const meta = await getRequestMeta();
-    const result = await offboardEmployee(actor, parsed.data, meta);
-    revalidatePath("/employees");
-    revalidatePath(`/employees/${parsed.data.employeeId}`);
-    return { ok: true, data: result };
-  } catch (error) {
-    if (isAppError(error)) return { ok: false, message: error.message };
-    throw error;
-  }
+    try {
+      const meta = await getRequestMeta();
+      const result = await offboardEmployee(actor, parsed.data, meta);
+      revalidatePath("/employees");
+      revalidatePath(`/employees/${parsed.data.employeeId}`);
+      return { ok: true, data: result };
+    } catch (error) {
+      if (isAppError(error)) return { ok: false, message: error.message };
+      throw error;
+    }
+  });
 }
 
 export async function revealSensitiveFieldAction(input: {
@@ -109,18 +113,19 @@ export async function revealSensitiveFieldAction(input: {
   // their own record) is identity-based, not permission-based. The
   // service itself re-derives access (self OR HR.EMPLOYEE.VIEW_SENSITIVE)
   // before decrypting anything.
-  const actor = await requireUser();
-  try {
-    const meta = await getRequestMeta();
-    const value = await employeeService.revealSensitiveField(
-      actor,
-      input.employeeId,
-      input.field,
-      meta
-    );
-    return { ok: true, data: { value } };
-  } catch (error) {
-    if (isAppError(error)) return { ok: false, message: error.message };
-    throw error;
-  }
+  return withTenantUser(async (actor) => {
+    try {
+      const meta = await getRequestMeta();
+      const value = await employeeService.revealSensitiveField(
+        actor,
+        input.employeeId,
+        input.field,
+        meta
+      );
+      return { ok: true, data: { value } };
+    } catch (error) {
+      if (isAppError(error)) return { ok: false, message: error.message };
+      throw error;
+    }
+  });
 }

@@ -34,6 +34,7 @@ export const ErrorCode = {
   STORAGE_NOT_CONFIGURED: "STORAGE_NOT_CONFIGURED",
   DOCUMENT_FILE_TYPE_NOT_ALLOWED: "DOCUMENT_FILE_TYPE_NOT_ALLOWED",
   DOCUMENT_FILE_TOO_LARGE: "DOCUMENT_FILE_TOO_LARGE",
+  DOCUMENT_TYPE_NOT_ALLOWED_FOR_SCOPE: "DOCUMENT_TYPE_NOT_ALLOWED_FOR_SCOPE",
 
   ATTENDANCE_NO_LINKED_EMPLOYEE: "ATTENDANCE_NO_LINKED_EMPLOYEE",
   ATTENDANCE_ALREADY_CHECKED_IN: "ATTENDANCE_ALREADY_CHECKED_IN",
@@ -104,6 +105,10 @@ export const ErrorCode = {
   PAYSLIP_NOT_FOUND: "PAYSLIP_NOT_FOUND",
   PAYSLIP_NOT_AUTHORIZED: "PAYSLIP_NOT_AUTHORIZED",
   PAYSLIP_NO_BANK_ACCOUNT: "PAYSLIP_NO_BANK_ACCOUNT",
+
+  COMPANY_SLUG_ALREADY_EXISTS: "COMPANY_SLUG_ALREADY_EXISTS",
+  COMPANY_NOT_FOUND: "COMPANY_NOT_FOUND",
+  PLATFORM_ADMIN_INVALID_CREDENTIALS: "PLATFORM_ADMIN_INVALID_CREDENTIALS",
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -159,6 +164,8 @@ const DEFAULT_MESSAGES: Record<ErrorCode, string> = {
   DOCUMENT_FILE_TYPE_NOT_ALLOWED:
     "This file type isn't allowed for the selected document type.",
   DOCUMENT_FILE_TOO_LARGE: "This file exceeds the maximum allowed size.",
+  DOCUMENT_TYPE_NOT_ALLOWED_FOR_SCOPE:
+    "This document type isn't available here.",
 
   ATTENDANCE_NO_LINKED_EMPLOYEE:
     "Your account isn't linked to an employee record, so you can't check in.",
@@ -238,6 +245,10 @@ const DEFAULT_MESSAGES: Record<ErrorCode, string> = {
   PAYSLIP_NOT_FOUND: "Payslip not found.",
   PAYSLIP_NOT_AUTHORIZED: "You are not authorized to view this payslip.",
   PAYSLIP_NO_BANK_ACCOUNT: "This employee has no active bank account on file for disbursement.",
+
+  COMPANY_SLUG_ALREADY_EXISTS: "A company with this slug already exists.",
+  COMPANY_NOT_FOUND: "Company not found.",
+  PLATFORM_ADMIN_INVALID_CREDENTIALS: "Invalid email or password.",
 };
 
 /**

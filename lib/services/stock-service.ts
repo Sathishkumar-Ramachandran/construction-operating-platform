@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, type Db } from "@/lib/db";
 import { AppError, ErrorCode } from "@/lib/errors";
 import { AuditAction, recordAuditLog } from "@/lib/services/audit-service";
 import type { StockReferenceType, StockTransactionType } from "@/lib/erp/constants";
@@ -34,7 +34,7 @@ export type RecordStockTransactionInput = {
  * changedBy null.
  */
 export async function writeStockTransaction(
-  client: Prisma.TransactionClient,
+  client: Db,
   actor: AuthenticatedUser | null,
   input: RecordStockTransactionInput,
   meta: ActorMeta = {}

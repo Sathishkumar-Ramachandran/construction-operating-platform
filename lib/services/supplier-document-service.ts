@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { AppError, ErrorCode } from "@/lib/errors";
 import { AuditAction, recordAuditLog } from "@/lib/services/audit-service";
-import { requestGenericDocumentUploadUrl } from "@/lib/services/document-service";
+import { requestGenericDocumentUploadUrl, assertDocumentTypeAppliesToScope } from "@/lib/services/document-service";
 import { getDownloadUrl } from "@/lib/services/storage-service";
 import type { AuthenticatedUser } from "@/types/auth";
 
@@ -32,6 +32,7 @@ export async function requestSupplierDocumentUploadUrl(input: {
     originalFileName: input.originalFileName,
     mimeType: input.mimeType,
     fileSizeBytes: input.fileSizeBytes,
+    scope: "SUPPLIER",
   });
 }
 
@@ -50,6 +51,8 @@ export async function confirmSupplierDocumentUpload(
   },
   meta: ActorMeta = {}
 ) {
+  await assertDocumentTypeAppliesToScope(input.documentTypeId, "SUPPLIER");
+
   const document = await db.supplierDocument.create({
     data: {
       supplierId: input.supplierId || null,

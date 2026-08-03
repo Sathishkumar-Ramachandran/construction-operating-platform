@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { requireUser } from "@/lib/auth/guards";
+import { withTenantUser } from "@/lib/auth/guards";
 import { getVisibleNavigationHrefs } from "@/lib/authorization/get-visible-navigation";
 import { AppShell } from "@/components/layout/app-shell";
 
@@ -8,17 +8,17 @@ export default async function ProtectedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await requireUser();
+  return withTenantUser(async (user) => {
+    if (user.mustChangePassword) {
+      redirect("/change-password");
+    }
 
-  if (user.mustChangePassword) {
-    redirect("/change-password");
-  }
+    const visibleHrefs = await getVisibleNavigationHrefs(user);
 
-  const visibleHrefs = await getVisibleNavigationHrefs(user);
-
-  return (
-    <AppShell visibleHrefs={visibleHrefs} user={user}>
-      {children}
-    </AppShell>
-  );
+    return (
+      <AppShell visibleHrefs={visibleHrefs} user={user}>
+        {children}
+      </AppShell>
+    );
+  });
 }

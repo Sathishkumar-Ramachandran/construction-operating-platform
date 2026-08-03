@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { db } from "@/lib/db";
+import { db, withTenant } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import {
   authenticateUser,
@@ -9,6 +9,7 @@ import {
   destroySessionByToken,
 } from "@/lib/services/auth-service";
 import { UserRole } from "@/lib/authorization/roles";
+import { getTestCompanyId } from "@/tests/helpers/actors";
 
 const RUN_ID = randomUUID();
 const ACTIVE_EMAIL = `vitest-auth-active-${RUN_ID}@test.excell.internal`;
@@ -20,40 +21,46 @@ let inactiveUserId: string;
 
 describe("auth-service (integration)", () => {
   beforeAll(async () => {
-    const role = await db.role.findUniqueOrThrow({
-      where: { code: UserRole.TEAM_MEMBER },
-    });
-    const passwordHash = await hashPassword(PASSWORD);
+    const companyId = await getTestCompanyId();
+    await withTenant(companyId, async () => {
+      const role = await db.role.findUniqueOrThrow({
+        where: { companyId_code: { companyId, code: UserRole.TEAM_MEMBER } },
+      });
+      const passwordHash = await hashPassword(PASSWORD);
 
-    const activeUser = await db.user.create({
-      data: {
-        name: "Vitest Active User",
-        email: ACTIVE_EMAIL,
-        passwordHash,
-        roleId: role.id,
-        isActive: true,
-      },
-    });
-    activeUserId = activeUser.id;
+      const activeUser = await db.user.create({
+        data: {
+          name: "Vitest Active User",
+          email: ACTIVE_EMAIL,
+          passwordHash,
+          roleId: role.id,
+          isActive: true,
+        },
+      });
+      activeUserId = activeUser.id;
 
-    const inactiveUser = await db.user.create({
-      data: {
-        name: "Vitest Inactive User",
-        email: INACTIVE_EMAIL,
-        passwordHash,
-        roleId: role.id,
-        isActive: false,
-      },
+      const inactiveUser = await db.user.create({
+        data: {
+          name: "Vitest Inactive User",
+          email: INACTIVE_EMAIL,
+          passwordHash,
+          roleId: role.id,
+          isActive: false,
+        },
+      });
+      inactiveUserId = inactiveUser.id;
     });
-    inactiveUserId = inactiveUser.id;
   });
 
   afterAll(async () => {
-    await db.session.deleteMany({
-      where: { userId: { in: [activeUserId, inactiveUserId] } },
-    });
-    await db.user.deleteMany({
-      where: { id: { in: [activeUserId, inactiveUserId] } },
+    const companyId = await getTestCompanyId();
+    await withTenant(companyId, async () => {
+      await db.session.deleteMany({
+        where: { userId: { in: [activeUserId, inactiveUserId] } },
+      });
+      await db.user.deleteMany({
+        where: { id: { in: [activeUserId, inactiveUserId] } },
+      });
     });
   });
 
@@ -94,10 +101,13 @@ describe("auth-service (integration)", () => {
   });
 
   it("round-trips a session: create, resolve, then destroy", async () => {
-    const session = await createSession(activeUserId, {
-      ipAddress: "127.0.0.1",
-      userAgent: "vitest",
-    });
+    const companyId = await getTestCompanyId();
+    const session = await withTenant(companyId, () =>
+      createSession(activeUserId, {
+        ipAddress: "127.0.0.1",
+        userAgent: "vitest",
+      })
+    );
 
     const resolved = await getSessionUser(session.token);
     expect(resolved?.id).toBe(activeUserId);

@@ -47,7 +47,7 @@ export function DocumentManagerPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [documentTypeId, setDocumentTypeId] = useState("");
   const [uploading, setUploading] = useState(false);
-  const { data: documentTypes } = useMasterDataOptions("document-types");
+  const { data: documentTypes } = useMasterDataOptions("document-types", { scope: "PROJECT" });
 
   function startUpload() {
     if (!documentTypeId) {

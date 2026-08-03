@@ -16,8 +16,15 @@ import {
 } from "@/components/ui/dialog";
 import { MasterDataPage, type MasterDataRow } from "@/components/hr/master-data-page";
 import { saveDocumentTypeAction, setDocumentTypeActiveAction } from "@/actions/hr-master-data-actions";
+import { DocumentTypeScope, type DocumentTypeScope as DocumentTypeScopeType } from "@/lib/hr/constants";
 
 const DEFAULT_MIME_TYPES = "application/pdf,image/png,image/jpeg";
+
+const SCOPE_OPTIONS: { value: DocumentTypeScopeType; label: string }[] = [
+  { value: DocumentTypeScope.EMPLOYEE, label: "Employee" },
+  { value: DocumentTypeScope.PROJECT, label: "Project / Lead" },
+  { value: DocumentTypeScope.SUPPLIER, label: "Supplier" },
+];
 
 export function DocumentTypesSettings() {
   const [createOpen, setCreateOpen] = useState(false);
@@ -27,6 +34,10 @@ export function DocumentTypesSettings() {
     <MasterDataPage
       apiType="document-types"
       extraColumns={[
+        {
+          header: "Applies to",
+          render: (row) => ((row.appliesTo as string[] | undefined) ?? []).join(", ") || "—",
+        },
         { header: "Confidential", render: (row) => (row.isConfidential ? "Yes" : "No") },
         { header: "Expiry required", render: (row) => (row.requiresExpiryDate ? "Yes" : "No") },
       ]}
@@ -53,6 +64,7 @@ export function DocumentTypesSettings() {
                 id: row.id,
                 code: row.code,
                 name: row.name,
+                appliesTo: (row.appliesTo as DocumentTypeScopeType[] | undefined) ?? [],
                 requiresExpiryDate: Boolean(row.requiresExpiryDate),
                 isConfidential: Boolean(row.isConfidential),
                 allowedMimeTypes: ((row.allowedMimeTypes as string[] | undefined) ?? [])
@@ -83,6 +95,7 @@ function SaveDialog({
     id: string;
     code: string;
     name: string;
+    appliesTo: DocumentTypeScopeType[];
     requiresExpiryDate: boolean;
     isConfidential: boolean;
     allowedMimeTypes: string;
@@ -94,6 +107,7 @@ function SaveDialog({
   const isEdit = Boolean(initial?.id);
   const [code, setCode] = useState(initial?.code ?? "");
   const [name, setName] = useState(initial?.name ?? "");
+  const [appliesTo, setAppliesTo] = useState<DocumentTypeScopeType[]>(initial?.appliesTo ?? []);
   const [requiresExpiryDate, setRequiresExpiryDate] = useState(initial?.requiresExpiryDate ?? false);
   const [isConfidential, setIsConfidential] = useState(initial?.isConfidential ?? false);
   const [allowedMimeTypes, setAllowedMimeTypes] = useState(initial?.allowedMimeTypes ?? DEFAULT_MIME_TYPES);
@@ -105,11 +119,16 @@ function SaveDialog({
       toast.error("Code and name are required.");
       return;
     }
+    if (appliesTo.length === 0) {
+      toast.error("Select at least one area this document type applies to.");
+      return;
+    }
     setSubmitting(true);
     const result = await saveDocumentTypeAction({
       id: initial?.id,
       code: code.toUpperCase(),
       name,
+      appliesTo,
       requiresExpiryDate,
       isConfidential,
       allowedMimeTypes: allowedMimeTypes.split(",").map((v) => v.trim()).filter(Boolean),
@@ -147,6 +166,26 @@ function SaveDialog({
           <div className="space-y-1.5">
             <Label>Maximum file size (MB)</Label>
             <Input type="number" value={maxSizeMb} onChange={(e) => setMaxSizeMb(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Applies to</Label>
+            <div className="flex flex-wrap gap-4">
+              {SCOPE_OPTIONS.map((option) => (
+                <label key={option.value} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={appliesTo.includes(option.value)}
+                    onCheckedChange={(checked) =>
+                      setAppliesTo((prev) =>
+                        checked === true
+                          ? [...prev, option.value]
+                          : prev.filter((v) => v !== option.value)
+                      )
+                    }
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={requiresExpiryDate} onCheckedChange={(v) => setRequiresExpiryDate(v === true)} />

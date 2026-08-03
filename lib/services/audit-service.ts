@@ -1,4 +1,20 @@
-import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/prisma/client";
+
+/**
+ * Deliberately NOT `Db | PrismaClient` (the extended client's type vs the
+ * base `rawDb` type) — calling a generic Prisma delegate method through a
+ * union of those two differently-parameterized client types triggers a
+ * "Excessive stack depth" compiler crash (same root cause as the
+ * employee-service.ts select-type issue). This minimal structural type is
+ * satisfied by `db`, a `db.$transaction` `tx`, and `rawDb` alike, so any of
+ * the three can be passed without the compiler needing to reconcile their
+ * full generic shapes.
+ */
+type AuditLogWriter = {
+  auditLog: {
+    create(args: { data: Prisma.AuditLogUncheckedCreateInput }): Promise<unknown>;
+  };
+};
 
 export const AuditAction = {
   AUTH_LOGIN_SUCCESS: "AUTH_LOGIN_SUCCESS",
@@ -121,9 +137,13 @@ export type RecordAuditLogInput = {
 /**
  * Writes an audit-log row. Never pass passwords, password hashes, session
  * tokens, or other secrets in `beforeData`/`afterData`/`metadata`.
+ *
+ * Accepts `db`, a `tx`, or `rawDb` (see `AuditLogWriter` above) — the last
+ * one for the handful of pre-tenant-context bootstrap call sites (e.g. an
+ * unresolvable-company login failure).
  */
 export async function recordAuditLog(
-  client: PrismaClient | Prisma.TransactionClient,
+  client: AuditLogWriter,
   input: RecordAuditLogInput
 ) {
   await client.auditLog.create({

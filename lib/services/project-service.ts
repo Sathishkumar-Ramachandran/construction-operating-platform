@@ -101,7 +101,9 @@ export async function getProjectById(id: string) {
 }
 
 export async function createProject(actor: AuthenticatedUser, input: CreateProjectInput) {
-  const existing = await db.project.findUnique({ where: { code: input.code } });
+  const existing = await db.project.findUnique({
+    where: { companyId_code: { companyId: actor.companyId, code: input.code } },
+  });
   if (existing) throw new AppError(ErrorCode.MASTER_DATA_CODE_ALREADY_EXISTS);
 
   const project = await db.project.create({
@@ -138,7 +140,9 @@ export async function updateProject(
   if (!existing) throw new AppError(ErrorCode.PROJECT_NOT_FOUND);
 
   if (input.code !== existing.code) {
-    const codeTaken = await db.project.findUnique({ where: { code: input.code } });
+    const codeTaken = await db.project.findUnique({
+      where: { companyId_code: { companyId: actor.companyId, code: input.code } },
+    });
     if (codeTaken) throw new AppError(ErrorCode.MASTER_DATA_CODE_ALREADY_EXISTS);
   }
 

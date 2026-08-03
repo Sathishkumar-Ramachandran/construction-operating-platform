@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ALL_DOCUMENT_TYPE_SCOPES } from "@/lib/hr/constants";
 
 const codeSchema = z
   .string()
@@ -60,6 +61,9 @@ export const documentTypeSchema = z.object({
   id: z.uuid().optional(),
   code: codeSchema,
   name: nameSchema,
+  appliesTo: z
+    .array(z.enum(ALL_DOCUMENT_TYPE_SCOPES))
+    .min(1, "Select at least one area this document type applies to."),
   requiresExpiryDate: z.boolean().default(false),
   isConfidential: z.boolean().default(false),
   allowedMimeTypes: z.array(z.string()).min(1),

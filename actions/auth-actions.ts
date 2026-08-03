@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
+import { db, withTenant, rawDb } from "@/lib/db";
 import {
   loginSchema,
   changePasswordSchema,
@@ -24,7 +24,7 @@ import {
 } from "@/lib/auth/session-cookie";
 import { AuditAction, recordAuditLog } from "@/lib/services/audit-service";
 import { getSafeRedirectPath } from "@/lib/redirect";
-import { requireUser } from "@/lib/auth/guards";
+import { withTenantUser } from "@/lib/auth/guards";
 import { isAppError } from "@/lib/errors";
 import type { ActionResult } from "@/actions/user-actions";
 
@@ -61,7 +61,9 @@ export async function login(
   const outcome = await authenticateUser(parsed.data.email, parsed.data.password);
 
   if (!outcome.ok) {
-    await recordAuditLog(db, {
+    // No companyId is resolvable yet (unknown email, or every candidate
+    // failed) — this audit row deliberately has no tenant, via rawDb.
+    await recordAuditLog(rawDb, {
       action: AuditAction.AUTH_LOGIN_FAILED,
       entityType: "User",
       metadata: { reason: outcome.auditCode, email: parsed.data.email.trim().toLowerCase() },
@@ -71,21 +73,23 @@ export async function login(
     return { message: "Invalid email or password." };
   }
 
-  const session = await createSession(outcome.user.id, { ipAddress, userAgent });
-  await setSessionCookie(session.token, session.expiresAt);
-  await recordLastLogin(outcome.user.id);
-  await recordAuditLog(db, {
-    userId: outcome.user.id,
-    action: AuditAction.AUTH_LOGIN_SUCCESS,
-    entityType: "User",
-    entityId: outcome.user.id,
-    ipAddress,
-    userAgent,
-  });
+  const destination = await withTenant(outcome.user.companyId, async () => {
+    const session = await createSession(outcome.user.id, { ipAddress, userAgent });
+    await setSessionCookie(session.token, session.expiresAt);
+    await recordLastLogin(outcome.user.id);
+    await recordAuditLog(db, {
+      userId: outcome.user.id,
+      action: AuditAction.AUTH_LOGIN_SUCCESS,
+      entityType: "User",
+      entityId: outcome.user.id,
+      ipAddress,
+      userAgent,
+    });
 
-  const destination = outcome.user.mustChangePassword
-    ? "/change-password"
-    : getSafeRedirectPath(parsed.data.callbackUrl);
+    return outcome.user.mustChangePassword
+      ? "/change-password"
+      : getSafeRedirectPath(parsed.data.callbackUrl);
+  });
 
   redirect(destination);
 }
@@ -101,14 +105,16 @@ export async function logout(): Promise<void> {
 
   if (user) {
     const { ipAddress, userAgent } = await getRequestMeta();
-    await recordAuditLog(db, {
-      userId: user.id,
-      action: AuditAction.AUTH_LOGOUT,
-      entityType: "User",
-      entityId: user.id,
-      ipAddress,
-      userAgent,
-    });
+    await withTenant(user.companyId, () =>
+      recordAuditLog(db, {
+        userId: user.id,
+        action: AuditAction.AUTH_LOGOUT,
+        entityType: "User",
+        entityId: user.id,
+        ipAddress,
+        userAgent,
+      })
+    );
   }
 
   redirect("/login");
@@ -125,8 +131,6 @@ export async function changePassword(
   _prevState: ChangePasswordFormState,
   formData: FormData
 ): Promise<ChangePasswordFormState> {
-  const user = await requireUser();
-
   const parsed = changePasswordSchema.safeParse({
     newPassword: formData.get("newPassword"),
     confirmPassword: formData.get("confirmPassword"),
@@ -140,14 +144,13 @@ export async function changePassword(
     return { errors: { confirmPassword: ["Passwords do not match."] } };
   }
 
-  await changeOwnPassword(user.id, parsed.data.newPassword);
+  await withTenantUser((user) => changeOwnPassword(user.id, parsed.data.newPassword));
   redirect("/dashboard");
 }
 
 export async function changeSecurityPasswordAction(
   input: unknown
 ): Promise<ActionResult<{ sessionsRevoked: number }>> {
-  const user = await requireUser();
   const parsed = securityPasswordChangeSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
@@ -162,13 +165,15 @@ export async function changeSecurityPasswordAction(
   }
 
   try {
-    const result = await changeOwnPasswordVerified(
-      user.id,
-      parsed.data.currentPassword,
-      parsed.data.newPassword,
-      token
-    );
-    return { ok: true, data: result };
+    return await withTenantUser(async (user) => {
+      const result = await changeOwnPasswordVerified(
+        user.id,
+        parsed.data.currentPassword,
+        parsed.data.newPassword,
+        token
+      );
+      return { ok: true as const, data: result };
+    });
   } catch (error) {
     if (isAppError(error)) return { ok: false, message: error.message };
     throw error;

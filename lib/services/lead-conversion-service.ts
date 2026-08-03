@@ -32,7 +32,9 @@ export async function convertLeadToProject(
   const existingProject = await db.project.findUnique({ where: { sourceLeadId: leadId } });
   if (existingProject) throw new AppError(ErrorCode.LEAD_ALREADY_CONVERTED);
 
-  const existingCode = await db.project.findUnique({ where: { code: input.code } });
+  const existingCode = await db.project.findUnique({
+    where: { companyId_code: { companyId: actor.companyId, code: input.code } },
+  });
   if (existingCode) throw new AppError(ErrorCode.MASTER_DATA_CODE_ALREADY_EXISTS);
 
   const estimatedBudget =

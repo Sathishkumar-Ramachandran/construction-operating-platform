@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/token";
+import { PLATFORM_ADMIN_SESSION_COOKIE_NAME } from "@/lib/auth/platform-admin-token";
 import { getSafeRedirectPath } from "@/lib/redirect";
 
 // Routes that never require a session. Everything else under the matcher
@@ -14,8 +15,36 @@ function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.includes(pathname);
 }
 
+/**
+ * /platform-admin is a completely separate, cross-tenant identity with its
+ * own cookie (PLATFORM_ADMIN_SESSION_COOKIE_NAME) — it must never be
+ * evaluated against the regular per-company SESSION_COOKIE_NAME check
+ * below, and the regular check must never treat it as a protected route
+ * needing a User session either. Same "optimistic pre-check only" caveat
+ * applies — requirePlatformAdmin() is the real boundary.
+ */
+function handlePlatformAdminRoute(request: NextRequest): NextResponse {
+  const { pathname } = request.nextUrl;
+  const hasPlatformAdminCookie = request.cookies.has(PLATFORM_ADMIN_SESSION_COOKIE_NAME);
+
+  if (pathname === "/platform-admin/login" && hasPlatformAdminCookie) {
+    return NextResponse.redirect(new URL("/platform-admin", request.url));
+  }
+
+  if (pathname !== "/platform-admin/login" && !hasPlatformAdminCookie) {
+    return NextResponse.redirect(new URL("/platform-admin/login", request.url));
+  }
+
+  return NextResponse.next();
+}
+
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+
+  if (pathname.startsWith("/platform-admin")) {
+    return handlePlatformAdminRoute(request);
+  }
+
   const hasSessionCookie = request.cookies.has(SESSION_COOKIE_NAME);
 
   if (pathname === "/login" && hasSessionCookie) {

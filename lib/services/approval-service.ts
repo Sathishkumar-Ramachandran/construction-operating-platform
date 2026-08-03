@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, type Db } from "@/lib/db";
 import { AppError, ErrorCode } from "@/lib/errors";
 import { AuditAction, recordAuditLog } from "@/lib/services/audit-service";
 import { getApprovalModuleHandler } from "@/lib/services/approval-registry";
@@ -15,7 +15,7 @@ import type { Prisma } from "@/generated/prisma/client";
 type ActorMeta = { ipAddress?: string | null; userAgent?: string | null };
 
 async function notifyUsers(
-  tx: Prisma.TransactionClient,
+  tx: Db,
   input: {
     userIds: string[];
     type: string;

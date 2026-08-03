@@ -90,16 +90,6 @@ export async function resolveEmployeeAccess(
   return "MANAGER";
 }
 
-function selectForAccess(access: EmployeeAccessLevel): Prisma.EmployeeSelect {
-  if (access === "SENSITIVE") {
-    return { ...DIRECTORY_SELECT, ...MANAGER_EXTRA_SELECT, ...SENSITIVE_EXTRA_SELECT };
-  }
-  if (access === "MANAGER") {
-    return { ...DIRECTORY_SELECT, ...MANAGER_EXTRA_SELECT };
-  }
-  return DIRECTORY_SELECT;
-}
-
 /** Resolves the caller's own linked employee id, if any. */
 export async function getActorEmployeeId(userId: string): Promise<string | null> {
   const employee = await db.employee.findUnique({
@@ -109,15 +99,43 @@ export async function getActorEmployeeId(userId: string): Promise<string | null>
   return employee?.id ?? null;
 }
 
+async function fetchEmployeeWithSensitiveSelect(id: string) {
+  return db.employee.findUnique({
+    where: { id },
+    select: { ...DIRECTORY_SELECT, ...MANAGER_EXTRA_SELECT, ...SENSITIVE_EXTRA_SELECT },
+  });
+}
+/** The widest possible result shape (DIRECTORY + MANAGER + SENSITIVE
+ * fields), derived from an actual call rather than the base
+ * `Prisma.EmployeeSelect` type — comparing that base type against the
+ * tenant-scoping extended client's own differently-parameterized select
+ * type triggers a TS "excessive stack depth" error. */
+type EmployeeSensitiveShape = NonNullable<Awaited<ReturnType<typeof fetchEmployeeWithSensitiveSelect>>>;
+
+/**
+ * Each branch only actually fetches the columns its access level allows —
+ * the result is cast to the full shape below so callers get one stable
+ * type instead of a three-way union. Fields outside what the access level
+ * actually selected are `undefined` at runtime; callers must gate on
+ * `access` (or check field presence) before trusting MANAGER/SENSITIVE-only
+ * fields, exactly as if this were still a loosely-typed generic select.
+ */
 export async function getEmployeeById(actor: AuthenticatedUser, id: string) {
   const actorEmployeeId = await getActorEmployeeId(actor.id);
   const access = await resolveEmployeeAccess(actor, id, actorEmployeeId);
   if (access === "NONE") throw new AppError(ErrorCode.EMPLOYEE_NOT_FOUND);
 
-  const employee = await db.employee.findUnique({
-    where: { id },
-    select: selectForAccess(access),
-  });
+  const employee = (
+    access === "SENSITIVE"
+      ? await fetchEmployeeWithSensitiveSelect(id)
+      : access === "MANAGER"
+        ? await db.employee.findUnique({
+            where: { id },
+            select: { ...DIRECTORY_SELECT, ...MANAGER_EXTRA_SELECT },
+          })
+        : await db.employee.findUnique({ where: { id }, select: DIRECTORY_SELECT })
+  ) as EmployeeSensitiveShape | null;
+
   if (!employee) throw new AppError(ErrorCode.EMPLOYEE_NOT_FOUND);
 
   return { employee, access };
@@ -196,7 +214,7 @@ export async function createEmployee(
   const workEmail = input.workEmail ? input.workEmail.trim().toLowerCase() : null;
   if (workEmail) {
     const existing = await db.employee.findUnique({
-      where: { workEmail },
+      where: { companyId_workEmail: { companyId: actor.companyId, workEmail } },
       select: { id: true },
     });
     if (existing) throw new AppError(ErrorCode.EMPLOYEE_WORK_EMAIL_ALREADY_EXISTS);
@@ -214,7 +232,7 @@ export async function createEmployee(
   const passportNumber = input.passportNumber?.trim() || null;
 
   const employee = await db.$transaction(async (tx) => {
-    const employeeNumber = await allocateNextEmployeeNumber(tx);
+    const employeeNumber = await allocateNextEmployeeNumber(tx, actor.companyId);
 
     const created = await tx.employee.create({
       data: {
@@ -280,7 +298,7 @@ export async function updateEmployee(
   const workEmail = input.workEmail ? input.workEmail.trim().toLowerCase() : null;
   if (workEmail && workEmail !== existing.workEmail) {
     const conflict = await db.employee.findUnique({
-      where: { workEmail },
+      where: { companyId_workEmail: { companyId: actor.companyId, workEmail } },
       select: { id: true },
     });
     if (conflict) throw new AppError(ErrorCode.EMPLOYEE_WORK_EMAIL_ALREADY_EXISTS);

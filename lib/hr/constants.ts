@@ -189,28 +189,42 @@ export const DEFAULT_PROJECT_ROLES = [
   { code: "GENERAL_WORKER", name: "General Worker" },
 ] as const;
 
+/** Which upload surface(s) a DocumentType may be selected from. A flat,
+ *  undifferentiated DocumentType list used to be shared across Employee,
+ *  Project/Lead, and Supplier uploads with no discrimination — meaning an
+ *  HR-only type like "Passport" could be uploaded against a Project, and
+ *  vice versa. This scope tag, checked server-side in document-service.ts
+ *  (not just filtered client-side), is what actually closes that gap. */
+export const DocumentTypeScope = {
+  EMPLOYEE: "EMPLOYEE",
+  PROJECT: "PROJECT", // also covers CRM Leads — ProjectDocument backs both
+  SUPPLIER: "SUPPLIER",
+} as const;
+export type DocumentTypeScope = (typeof DocumentTypeScope)[keyof typeof DocumentTypeScope];
+export const ALL_DOCUMENT_TYPE_SCOPES: DocumentTypeScope[] = Object.values(DocumentTypeScope);
+
 export const DEFAULT_DOCUMENT_TYPES = [
-  { code: "IDENTITY_DOCUMENT", name: "Identity Document", requiresExpiryDate: false, isConfidential: true },
-  { code: "PASSPORT", name: "Passport", requiresExpiryDate: true, isConfidential: true },
-  { code: "WORK_PASS", name: "Work Pass", requiresExpiryDate: true, isConfidential: true },
-  { code: "EMPLOYMENT_CONTRACT", name: "Employment Contract", requiresExpiryDate: false, isConfidential: true },
-  { code: "EDUCATION_CERTIFICATE", name: "Education Certificate", requiresExpiryDate: false, isConfidential: false },
-  { code: "PROFESSIONAL_CERTIFICATE", name: "Professional Certificate", requiresExpiryDate: true, isConfidential: false },
-  { code: "LICENCE", name: "Licence", requiresExpiryDate: true, isConfidential: false },
-  { code: "SAFETY_CERTIFICATE", name: "Safety Certificate", requiresExpiryDate: true, isConfidential: false },
-  { code: "MEDICAL_DOCUMENT", name: "Medical Document", requiresExpiryDate: false, isConfidential: true },
-  { code: "BANK_DOCUMENT", name: "Bank Document", requiresExpiryDate: false, isConfidential: true },
-  { code: "RESUME", name: "Resume", requiresExpiryDate: false, isConfidential: false },
-  { code: "PROFILE_PHOTO", name: "Profile Photo", requiresExpiryDate: false, isConfidential: false },
-  { code: "TENDER_DOC", name: "Tender Document", requiresExpiryDate: false, isConfidential: true },
-  { code: "CONTRACT", name: "Contract", requiresExpiryDate: false, isConfidential: true },
-  { code: "DRAWING", name: "Drawing", requiresExpiryDate: false, isConfidential: false },
-  { code: "BOQ", name: "Bill of Quantities", requiresExpiryDate: false, isConfidential: false },
-  { code: "PERMIT", name: "Permit", requiresExpiryDate: true, isConfidential: false },
-  { code: "SUPPLIER_QUOTATION", name: "Supplier Quotation", requiresExpiryDate: false, isConfidential: false },
-  { code: "SUPPLIER_INVOICE", name: "Supplier Invoice", requiresExpiryDate: false, isConfidential: true },
-  { code: "SUPPLIER_CERTIFICATE", name: "Supplier Certificate", requiresExpiryDate: true, isConfidential: false },
-  { code: "OTHER", name: "Other", requiresExpiryDate: false, isConfidential: false },
+  { code: "IDENTITY_DOCUMENT", name: "Identity Document", requiresExpiryDate: false, isConfidential: true, appliesTo: [DocumentTypeScope.EMPLOYEE] },
+  { code: "PASSPORT", name: "Passport", requiresExpiryDate: true, isConfidential: true, appliesTo: [DocumentTypeScope.EMPLOYEE] },
+  { code: "WORK_PASS", name: "Work Pass", requiresExpiryDate: true, isConfidential: true, appliesTo: [DocumentTypeScope.EMPLOYEE] },
+  { code: "EMPLOYMENT_CONTRACT", name: "Employment Contract", requiresExpiryDate: false, isConfidential: true, appliesTo: [DocumentTypeScope.EMPLOYEE] },
+  { code: "EDUCATION_CERTIFICATE", name: "Education Certificate", requiresExpiryDate: false, isConfidential: false, appliesTo: [DocumentTypeScope.EMPLOYEE] },
+  { code: "PROFESSIONAL_CERTIFICATE", name: "Professional Certificate", requiresExpiryDate: true, isConfidential: false, appliesTo: [DocumentTypeScope.EMPLOYEE] },
+  { code: "LICENCE", name: "Licence", requiresExpiryDate: true, isConfidential: false, appliesTo: [DocumentTypeScope.EMPLOYEE] },
+  { code: "SAFETY_CERTIFICATE", name: "Safety Certificate", requiresExpiryDate: true, isConfidential: false, appliesTo: [DocumentTypeScope.EMPLOYEE] },
+  { code: "MEDICAL_DOCUMENT", name: "Medical Document", requiresExpiryDate: false, isConfidential: true, appliesTo: [DocumentTypeScope.EMPLOYEE] },
+  { code: "BANK_DOCUMENT", name: "Bank Document", requiresExpiryDate: false, isConfidential: true, appliesTo: [DocumentTypeScope.EMPLOYEE] },
+  { code: "RESUME", name: "Resume", requiresExpiryDate: false, isConfidential: false, appliesTo: [DocumentTypeScope.EMPLOYEE] },
+  { code: "PROFILE_PHOTO", name: "Profile Photo", requiresExpiryDate: false, isConfidential: false, appliesTo: [DocumentTypeScope.EMPLOYEE] },
+  { code: "TENDER_DOC", name: "Tender Document", requiresExpiryDate: false, isConfidential: true, appliesTo: [DocumentTypeScope.PROJECT] },
+  { code: "CONTRACT", name: "Contract", requiresExpiryDate: false, isConfidential: true, appliesTo: [DocumentTypeScope.PROJECT] },
+  { code: "DRAWING", name: "Drawing", requiresExpiryDate: false, isConfidential: false, appliesTo: [DocumentTypeScope.PROJECT] },
+  { code: "BOQ", name: "Bill of Quantities", requiresExpiryDate: false, isConfidential: false, appliesTo: [DocumentTypeScope.PROJECT] },
+  { code: "PERMIT", name: "Permit", requiresExpiryDate: true, isConfidential: false, appliesTo: [DocumentTypeScope.PROJECT] },
+  { code: "SUPPLIER_QUOTATION", name: "Supplier Quotation", requiresExpiryDate: false, isConfidential: false, appliesTo: [DocumentTypeScope.SUPPLIER] },
+  { code: "SUPPLIER_INVOICE", name: "Supplier Invoice", requiresExpiryDate: false, isConfidential: true, appliesTo: [DocumentTypeScope.SUPPLIER] },
+  { code: "SUPPLIER_CERTIFICATE", name: "Supplier Certificate", requiresExpiryDate: true, isConfidential: false, appliesTo: [DocumentTypeScope.SUPPLIER] },
+  { code: "OTHER", name: "Other", requiresExpiryDate: false, isConfidential: false, appliesTo: ALL_DOCUMENT_TYPE_SCOPES },
 ] as const;
 
 const DEFAULT_ALLOWED_MIME_TYPES = [
@@ -291,6 +305,7 @@ export function defaultDocumentTypeSeedRow(
   return {
     code: entry.code,
     name: entry.name,
+    appliesTo: [...entry.appliesTo],
     requiresExpiryDate: entry.requiresExpiryDate,
     isConfidential: entry.isConfidential,
     allowedMimeTypes:

@@ -48,7 +48,7 @@ export function DocumentsPanel({
   const [documentTypeId, setDocumentTypeId] = useState("");
   const [uploading, setUploading] = useState(false);
 
-  const { data } = useMasterDataOptions("document-types");
+  const { data } = useMasterDataOptions("document-types", { scope: "EMPLOYEE" });
 
   function startUpload(forDocumentTypeId?: string) {
     if (forDocumentTypeId) setDocumentTypeId(forDocumentTypeId);

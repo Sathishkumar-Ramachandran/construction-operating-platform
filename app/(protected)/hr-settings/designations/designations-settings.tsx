@@ -106,7 +106,7 @@ function SaveDesignationDialog({
 }) {
   const isEdit = Boolean(initial?.id);
   const { data: departments } = useMasterDataOptions("departments");
-  const { data: documentTypes } = useMasterDataOptions("document-types");
+  const { data: documentTypes } = useMasterDataOptions("document-types", { scope: "EMPLOYEE" });
 
   const [code, setCode] = useState(initial?.code ?? "");
   const [name, setName] = useState(initial?.name ?? "");

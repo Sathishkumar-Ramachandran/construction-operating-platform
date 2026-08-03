@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, currentCompanyId, type Db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { AppError, ErrorCode } from "@/lib/errors";
 import { UserRole } from "@/lib/authorization/roles";
@@ -40,7 +40,9 @@ const SAFE_USER_SELECT = {
 } satisfies Prisma.UserSelect;
 
 async function getRoleByCode(code: string) {
-  const role = await db.role.findUnique({ where: { code } });
+  const role = await db.role.findUnique({
+    where: { companyId_code: { companyId: currentCompanyId(), code } },
+  });
   if (!role) {
     throw new AppError(ErrorCode.VALIDATION_ERROR, "Unknown role.");
   }
@@ -48,7 +50,7 @@ async function getRoleByCode(code: string) {
 }
 
 async function countActiveSuperAdmins(
-  client: typeof db | Prisma.TransactionClient = db
+  client: Db = db
 ) {
   return client.user.count({
     where: { isActive: true, role: { code: UserRole.SUPER_ADMIN } },
@@ -94,7 +96,7 @@ export async function createUser(
   const normalizedEmail = input.email.trim().toLowerCase();
 
   const existing = await db.user.findUnique({
-    where: { email: normalizedEmail },
+    where: { companyId_email: { companyId: actor.companyId, email: normalizedEmail } },
     select: { id: true },
   });
   if (existing) {

@@ -1,12 +1,11 @@
-import { db } from "@/lib/db";
+import { db, type Db } from "@/lib/db";
 import { AppError, ErrorCode } from "@/lib/errors";
 import { AuditAction, recordAuditLog } from "@/lib/services/audit-service";
-import { requestGenericDocumentUploadUrl } from "@/lib/services/document-service";
+import { requestGenericDocumentUploadUrl, assertDocumentTypeAppliesToScope } from "@/lib/services/document-service";
 import { getDownloadUrl } from "@/lib/services/storage-service";
 import { hasPermission } from "@/lib/services/authorization-service";
 import { PERMISSIONS } from "@/lib/authorization/permissions";
 import type { AuthenticatedUser } from "@/types/auth";
-import type { Prisma } from "@/generated/prisma/client";
 
 type ActorMeta = { ipAddress?: string | null; userAgent?: string | null };
 
@@ -39,6 +38,7 @@ export async function requestProjectDocumentUploadUrl(input: {
     originalFileName: input.originalFileName,
     mimeType: input.mimeType,
     fileSizeBytes: input.fileSizeBytes,
+    scope: "PROJECT",
   });
 }
 
@@ -57,6 +57,8 @@ export async function confirmProjectDocumentUpload(
   },
   meta: ActorMeta = {}
 ) {
+  await assertDocumentTypeAppliesToScope(input.documentTypeId, "PROJECT");
+
   const document = await db.projectDocument.create({
     data: {
       projectId: input.projectId || null,
@@ -119,7 +121,7 @@ export async function archiveProjectDocument(actor: AuthenticatedUser, documentI
  * rather than copying rows, so there is exactly one document history
  * spanning the pre- and post-conversion stages. */
 export async function reassignLeadDocumentsToProject(
-  tx: Prisma.TransactionClient,
+  tx: Db,
   leadId: string,
   projectId: string
 ) {

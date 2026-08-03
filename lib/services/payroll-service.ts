@@ -138,7 +138,13 @@ export async function createPayrollPeriod(
   meta: ActorMeta = {}
 ) {
   const existing = await db.payrollPeriod.findUnique({
-    where: { periodYear_periodMonth: { periodYear: input.periodYear, periodMonth: input.periodMonth } },
+    where: {
+      companyId_periodYear_periodMonth: {
+        companyId: actor.companyId,
+        periodYear: input.periodYear,
+        periodMonth: input.periodMonth,
+      },
+    },
   });
   if (existing) throw new AppError(ErrorCode.PAYROLL_PERIOD_ALREADY_EXISTS);
 

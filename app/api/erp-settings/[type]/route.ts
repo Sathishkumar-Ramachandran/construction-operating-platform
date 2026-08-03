@@ -1,4 +1,4 @@
-import { requireApiUser } from "@/lib/auth/guards";
+import { withTenantApiUser } from "@/lib/auth/guards";
 import * as erpMasterData from "@/lib/services/erp-master-data-service";
 
 const LISTERS = {
@@ -20,14 +20,13 @@ export async function GET(
   // Any authenticated user, not just INVENTORY.MANAGE holders — these lists
   // back dropdowns (e.g. a future material picker on resource requests) that
   // need to be readable by whoever is filing the request, not only Admin.
-  const guard = await requireApiUser();
-  if (guard.response) return guard.response;
+  return withTenantApiUser(async () => {
+    const { type } = await params;
+    if (!isErpMasterDataType(type)) {
+      return Response.json({ error: "NOT_FOUND" }, { status: 404 });
+    }
 
-  const { type } = await params;
-  if (!isErpMasterDataType(type)) {
-    return Response.json({ error: "NOT_FOUND" }, { status: 404 });
-  }
-
-  const items = await LISTERS[type]();
-  return Response.json({ items });
+    const items = await LISTERS[type]();
+    return Response.json({ items });
+  });
 }

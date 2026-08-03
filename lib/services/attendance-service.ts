@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, currentCompanyId } from "@/lib/db";
 import { AppError, ErrorCode } from "@/lib/errors";
 import {
   AttendanceStatus,
@@ -149,7 +149,7 @@ export async function checkIn(actor: AuthenticatedUser, meta: ActorMeta = {}) {
   if (existing?.checkInAt) throw new AppError(ErrorCode.ATTENDANCE_ALREADY_CHECKED_IN);
 
   const [holiday, shift] = await Promise.all([
-    db.holiday.findUnique({ where: { date: today } }),
+    db.holiday.findUnique({ where: { companyId_date: { companyId: currentCompanyId(), date: today } } }),
     employee.defaultShiftTypeId
       ? db.shiftType.findUnique({ where: { id: employee.defaultShiftTypeId } })
       : Promise.resolve(null),
@@ -241,7 +241,7 @@ export async function getMyTodayAttendance(actor: AuthenticatedUser) {
   const today = startOfDay(new Date());
   const [record, holiday] = await Promise.all([
     db.attendanceRecord.findUnique({ where: { employeeId_date: { employeeId, date: today } } }),
-    db.holiday.findUnique({ where: { date: today } }),
+    db.holiday.findUnique({ where: { companyId_date: { companyId: currentCompanyId(), date: today } } }),
   ]);
 
   if (record) {
@@ -353,7 +353,7 @@ export async function getAttendanceBoardForDate(
     employeeIds.length
       ? db.attendanceRecord.findMany({ where: { employeeId: { in: employeeIds }, date } })
       : Promise.resolve([]),
-    db.holiday.findUnique({ where: { date } }),
+    db.holiday.findUnique({ where: { companyId_date: { companyId: currentCompanyId(), date } } }),
   ]);
 
   const recordByEmployee = new Map(records.map((r) => [r.employeeId, r]));

@@ -18,7 +18,7 @@ import {
   Compass,
   ShieldAlert,
 } from "lucide-react";
-import { requireUser } from "@/lib/auth/guards";
+import { withTenantUser } from "@/lib/auth/guards";
 import { hasPermission } from "@/lib/services/authorization-service";
 import { PERMISSIONS } from "@/lib/authorization/permissions";
 import { UserRole, ROLE_LABELS } from "@/lib/authorization/roles";
@@ -39,25 +39,31 @@ const today = () =>
   });
 
 export default async function DashboardPage() {
-  const user = await requireUser();
-  const isSuperAdminOrAdmin =
-    user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN;
+  return withTenantUser(async (user) => {
+    const isSuperAdminOrAdmin =
+      user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN;
 
-  return (
-    <div className="space-y-8">
-      <PageHeader
-        title={`Welcome back, ${user.name.split(" ")[0]}`}
-        description={`${today()} · Signed in as`}
-        actions={<RoleBadge role={user.role} />}
-      />
+    // Called directly (not left as nested JSX) and awaited here so their
+    // db calls run while still inside withTenantUser's AsyncLocalStorage
+    // context — React defers execution of JSX-referenced async components
+    // until after this callback's own promise has already resolved, which
+    // would unwind the tenant context before they ever ran.
+    const overview = isSuperAdminOrAdmin
+      ? await AdminOverview({ role: user.role })
+      : await RoleOverview({ user });
 
-      {isSuperAdminOrAdmin ? (
-        <AdminOverview role={user.role} />
-      ) : (
-        <RoleOverview user={user} />
-      )}
-    </div>
-  );
+    return (
+      <div className="space-y-8">
+        <PageHeader
+          title={`Welcome back, ${user.name.split(" ")[0]}`}
+          description={`${today()} · Signed in as`}
+          actions={<RoleBadge role={user.role} />}
+        />
+
+        {overview}
+      </div>
+    );
+  });
 }
 
 async function AdminOverview({ role }: { role: UserRole }) {

@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from "node:crypto";
-import { db } from "@/lib/db";
+import { db, rawDb, withTenant, type Db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { hashSessionToken } from "@/lib/auth/token";
 import { env } from "@/lib/env";
@@ -11,14 +11,13 @@ import {
   generateSecureInitialPasswordFor,
 } from "@/lib/services/password-generation-service";
 import type { AuthenticatedUser } from "@/types/auth";
-import type { PrismaClient, Prisma } from "@/generated/prisma/client";
 
 type ActorMeta = { ipAddress?: string | null; userAgent?: string | null };
 
 /** Revokes every session for a user — used on admin reset and offboarding. */
 export async function revokeAllSessions(
   userId: string,
-  client: PrismaClient | Prisma.TransactionClient = db
+  client: Db = db
 ): Promise<number> {
   const result = await client.session.deleteMany({ where: { userId } });
   return result.count;
@@ -110,11 +109,15 @@ const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
 export async function requestForgotPasswordToken(
   email: string
 ): Promise<{ token: string; userId: string } | null> {
-  const user = await db.user.findUnique({
-    where: { email: email.trim().toLowerCase() },
-    select: { id: true, isActive: true },
+  // Uses rawDb, like login — no companyId is known yet from an email alone
+  // (email is only unique per-company). If the same email exists under
+  // multiple companies, this arbitrarily picks the first active match; a
+  // company-picker for that rare case is a later follow-up, same as login.
+  const user = await rawDb.user.findFirst({
+    where: { email: email.trim().toLowerCase(), isActive: true },
+    select: { id: true, isActive: true, companyId: true },
   });
-  if (!user || !user.isActive) return null;
+  if (!user) return null;
 
   const token = randomBytes(32).toString("base64url");
   const tokenHash = createHash("sha256")
@@ -122,28 +125,30 @@ export async function requestForgotPasswordToken(
     .update(token)
     .digest("hex");
 
-  await db.$transaction(async (tx) => {
-    // A newer token always revokes older ones for the same user.
-    await tx.passwordResetToken.updateMany({
-      where: { userId: user.id, usedAt: null },
-      data: { usedAt: new Date() },
-    });
+  await withTenant(user.companyId, () =>
+    db.$transaction(async (tx) => {
+      // A newer token always revokes older ones for the same user.
+      await tx.passwordResetToken.updateMany({
+        where: { userId: user.id, usedAt: null },
+        data: { usedAt: new Date() },
+      });
 
-    await tx.passwordResetToken.create({
-      data: {
+      await tx.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          tokenHash,
+          expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+        },
+      });
+
+      await recordAuditLog(tx, {
         userId: user.id,
-        tokenHash,
-        expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
-      },
-    });
-
-    await recordAuditLog(tx, {
-      userId: user.id,
-      action: AuditAction.USER_PASSWORD_RESET_REQUESTED,
-      entityType: "User",
-      entityId: user.id,
-    });
-  });
+        action: AuditAction.USER_PASSWORD_RESET_REQUESTED,
+        entityType: "User",
+        entityId: user.id,
+      });
+    })
+  );
 
   return { token, userId: user.id };
 }
@@ -157,38 +162,44 @@ export async function consumeForgotPasswordToken(
     .update(rawToken)
     .digest("hex");
 
-  const record = await db.passwordResetToken.findUnique({
+  // rawDb: like requestForgotPasswordToken, no companyId is known yet at
+  // this point — the token itself is what resolves it.
+  const record = await rawDb.passwordResetToken.findUnique({
     where: { tokenHash },
   });
 
   if (
     !record ||
+    !record.companyId ||
     record.usedAt !== null ||
     record.expiresAt.getTime() < Date.now()
   ) {
     throw new AppError(ErrorCode.RESET_TOKEN_INVALID);
   }
+  const companyId = record.companyId;
 
   const passwordHash = await hashPassword(newPassword);
 
-  await db.$transaction(async (tx) => {
-    await tx.passwordResetToken.update({
-      where: { id: record.id },
-      data: { usedAt: new Date() },
-    });
+  await withTenant(companyId, () =>
+    db.$transaction(async (tx) => {
+      await tx.passwordResetToken.update({
+        where: { id: record.id },
+        data: { usedAt: new Date() },
+      });
 
-    await tx.user.update({
-      where: { id: record.userId },
-      data: { passwordHash, mustChangePassword: false, version: { increment: 1 } },
-    });
+      await tx.user.update({
+        where: { id: record.userId },
+        data: { passwordHash, mustChangePassword: false, version: { increment: 1 } },
+      });
 
-    await revokeAllSessions(record.userId, tx);
+      await revokeAllSessions(record.userId, tx);
 
-    await recordAuditLog(tx, {
-      userId: record.userId,
-      action: AuditAction.USER_PASSWORD_RESET_COMPLETED,
-      entityType: "User",
-      entityId: record.userId,
-    });
-  });
+      await recordAuditLog(tx, {
+        userId: record.userId,
+        action: AuditAction.USER_PASSWORD_RESET_COMPLETED,
+        entityType: "User",
+        entityId: record.userId,
+      });
+    })
+  );
 }

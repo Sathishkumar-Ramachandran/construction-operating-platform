@@ -2,12 +2,8 @@ import { db } from "@/lib/db";
 import { AppError, ErrorCode } from "@/lib/errors";
 import { DocumentStatus } from "@/lib/hr/constants";
 import { AuditAction, recordAuditLog } from "@/lib/services/audit-service";
-import {
-  isStorageConfigured,
-  buildDocumentStorageKey,
-  getUploadUrl,
-  getDownloadUrl,
-} from "@/lib/services/storage-service";
+import { getDownloadUrl } from "@/lib/services/storage-service";
+import { requestGenericDocumentUploadUrl, assertDocumentTypeAppliesToScope } from "@/lib/services/document-service";
 import { hasPermission } from "@/lib/services/authorization-service";
 import { PERMISSIONS } from "@/lib/authorization/permissions";
 import type { AuthenticatedUser } from "@/types/auth";
@@ -31,26 +27,16 @@ export type RequestUploadInput = {
 };
 
 export async function requestDocumentUploadUrl(input: RequestUploadInput) {
-  if (!isStorageConfigured()) {
-    throw new AppError(ErrorCode.STORAGE_NOT_CONFIGURED);
-  }
-
-  const documentType = await db.documentType.findUnique({
-    where: { id: input.documentTypeId },
+  const result = await requestGenericDocumentUploadUrl({
+    storagePathPrefix: "employee-documents",
+    entityId: input.employeeId,
+    documentTypeId: input.documentTypeId,
+    originalFileName: input.originalFileName,
+    mimeType: input.mimeType,
+    fileSizeBytes: input.fileSizeBytes,
+    scope: "EMPLOYEE",
   });
-  if (!documentType) throw new AppError(ErrorCode.NOT_FOUND);
-
-  if (!documentType.allowedMimeTypes.includes(input.mimeType)) {
-    throw new AppError(ErrorCode.DOCUMENT_FILE_TYPE_NOT_ALLOWED);
-  }
-  if (input.fileSizeBytes > documentType.maximumFileSizeBytes) {
-    throw new AppError(ErrorCode.DOCUMENT_FILE_TOO_LARGE);
-  }
-
-  const storageKey = buildDocumentStorageKey("employee-documents", input.employeeId, input.originalFileName);
-  const uploadUrl = await getUploadUrl(storageKey, input.mimeType);
-
-  return { uploadUrl, storageKey };
+  return { uploadUrl: result.uploadUrl, storageKey: result.storageKey };
 }
 
 export type ConfirmUploadInput = {
@@ -72,6 +58,8 @@ export async function confirmDocumentUpload(
   input: ConfirmUploadInput,
   meta: ActorMeta = {}
 ) {
+  await assertDocumentTypeAppliesToScope(input.documentTypeId, "EMPLOYEE");
+
   const documentType = await db.documentType.findUnique({
     where: { id: input.documentTypeId },
   });

@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import type { MasterDataOption } from "@/types/employee";
+import type { DocumentTypeScope } from "@/lib/hr/constants";
 
 export type MasterDataType =
   | "departments"
@@ -21,17 +22,23 @@ export type MasterDataType =
  * one. Route the option/dropdown fetch through this hook everywhere
  * instead of writing ad hoc `useQuery(["hr-settings", type], ...)` calls.
  */
-async function fetchOptions(type: MasterDataType): Promise<MasterDataOption[]> {
-  const res = await fetch(`/api/hr-settings/${type}`);
+async function fetchOptions(type: MasterDataType, scope?: DocumentTypeScope): Promise<MasterDataOption[]> {
+  const url = scope ? `/api/hr-settings/${type}?scope=${scope}` : `/api/hr-settings/${type}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load ${type}.`);
   const { items } = await res.json();
   return items;
 }
 
-export function useMasterDataOptions(type: MasterDataType) {
+/** `scope` only applies to (and is only meaningful for) `type: "document-types"`
+ * — see DocumentTypeScope in lib/hr/constants.ts. It's folded into the query
+ * key so Employee/Project/Supplier document-type dropdowns cache separately
+ * instead of clobbering each other. */
+export function useMasterDataOptions(type: MasterDataType, options?: { scope?: DocumentTypeScope }) {
+  const scope = options?.scope;
   return useQuery({
-    queryKey: ["hr-settings", type],
-    queryFn: () => fetchOptions(type),
+    queryKey: ["hr-settings", type, scope],
+    queryFn: () => fetchOptions(type, scope),
     staleTime: 60_000,
   });
 }

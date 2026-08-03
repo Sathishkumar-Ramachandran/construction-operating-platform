@@ -1,4 +1,4 @@
-import type { Prisma } from "@/generated/prisma/client";
+import type { Db } from "@/lib/db";
 import type { UserRole } from "@/lib/authorization/roles";
 
 /** Extensible string, same pattern as AuditAction/ErrorCode — add a new
@@ -43,12 +43,12 @@ export type ApprovalModuleHandler = {
   ): Promise<ResolvedApprover[]>;
   /** Called inside the same transaction as the final approving decision. */
   onApproved(
-    tx: Prisma.TransactionClient,
+    tx: Db,
     request: ApprovalRequestSummary
   ): Promise<void>;
   /** Called inside the same transaction as the final rejecting decision. */
   onRejected(
-    tx: Prisma.TransactionClient,
+    tx: Db,
     request: ApprovalRequestSummary
   ): Promise<void>;
 };

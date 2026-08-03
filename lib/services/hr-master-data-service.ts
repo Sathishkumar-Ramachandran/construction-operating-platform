@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { AppError, ErrorCode } from "@/lib/errors";
+import type { DocumentTypeScope } from "@/lib/hr/constants";
 import { AuditAction, recordAuditLog } from "@/lib/services/audit-service";
 import { assertNoDepartmentCycle } from "@/lib/services/org-hierarchy-service";
 import type {
@@ -433,8 +434,11 @@ export async function setProjectRoleActive(id: string, isActive: boolean) {
 
 // --- Document types -----------------------------------------------------
 
-export async function listDocumentTypes() {
-  return db.documentType.findMany({ orderBy: { name: "asc" } });
+export async function listDocumentTypes(scope?: DocumentTypeScope) {
+  return db.documentType.findMany({
+    where: scope ? { appliesTo: { has: scope } } : undefined,
+    orderBy: { name: "asc" },
+  });
 }
 
 export async function createDocumentType(
@@ -446,6 +450,7 @@ export async function createDocumentType(
     data: {
       code: input.code,
       name: input.name,
+      appliesTo: input.appliesTo,
       requiresExpiryDate: input.requiresExpiryDate,
       isConfidential: input.isConfidential,
       allowedMimeTypes: input.allowedMimeTypes,
@@ -476,6 +481,7 @@ export async function updateDocumentType(
     data: {
       code: input.code,
       name: input.name,
+      appliesTo: input.appliesTo,
       requiresExpiryDate: input.requiresExpiryDate,
       isConfidential: input.isConfidential,
       allowedMimeTypes: input.allowedMimeTypes,
@@ -625,7 +631,9 @@ export async function listHolidays() {
 
 export async function createHoliday(actor: AuthenticatedUser, input: HolidayInput) {
   const date = new Date(input.date);
-  const existing = await db.holiday.findUnique({ where: { date } });
+  const existing = await db.holiday.findUnique({
+    where: { companyId_date: { companyId: actor.companyId, date } },
+  });
   if (existing) throw new AppError(ErrorCode.VALIDATION_ERROR, "A holiday already exists on this date.");
 
   const holiday = await db.holiday.create({

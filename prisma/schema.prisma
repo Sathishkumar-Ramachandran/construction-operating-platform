@@ -7,12 +7,144 @@ datasource db {
   provider = "postgresql"
 }
 
+/// Tenant root. Every business-data model carries a companyId scoping its
+/// rows to exactly one Company — see lib/db.ts's Prisma Client Extension,
+/// which auto-injects this filter on every query so individual service
+/// functions never need to remember to scope by tenant themselves.
+/// Deactivating a company (not deleting — see PlatformAdmin control panel)
+/// blocks login and invalidates live sessions immediately.
+///
+/// Every `companyId` column below is `@default("")` even though it's
+/// NOT NULL and always meaningfully populated. This is a deliberate
+/// TypeScript-only escape hatch: without a default, Prisma's generated
+/// `XCreateInput` types would require every service-layer `.create(...)`
+/// call to pass `companyId` explicitly — reintroducing exactly the
+/// "every call site must remember the tenant" problem the extension
+/// exists to eliminate. The extension's `scopeArgs` unconditionally
+/// overwrites `data.companyId` on every create that goes through `db`,
+/// so this default is never actually persisted in practice; it only
+/// exists to make the field optional at the type level. A stray
+/// `rawDb.<model>.create()` call that omits companyId would insert `""`
+/// and fail loudly on the FK constraint, not leak data silently.
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  code      String?  @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users                         User[]
+  roles                         Role[]
+  permissions                   Permission[]
+  rolePermissions               RolePermission[]
+  sessions                      Session[]
+  auditLogs                     AuditLog[]
+  passwordResetTokens           PasswordResetToken[]
+  departments                   Department[]
+  designations                  Designation[]
+  designationRequiredDocuments  DesignationRequiredDocument[]
+  employmentGrades              EmploymentGrade[]
+  employmentTypes               EmploymentType[]
+  projectRoles                  ProjectRole[]
+  documentTypes                 DocumentType[]
+  certificationTypes            CertificationType[]
+  employeeNumberSequence        EmployeeNumberSequence?
+  employees                     Employee[]
+  employeeAddresses             EmployeeAddress[]
+  emergencyContacts             EmergencyContact[]
+  employeeBankAccounts          EmployeeBankAccount[]
+  employeeStatusHistories       EmployeeStatusHistory[]
+  salaryStructures              SalaryStructure[]
+  compensationComponents        CompensationComponent[]
+  payrollPeriods                PayrollPeriod[]
+  payslips                      Payslip[]
+  payslipLineItems              PayslipLineItem[]
+  cpfContributionRates          CpfContributionRate[]
+  projects                      Project[]
+  sites                         Site[]
+  siteStageChecklistItems       SiteStageChecklistItem[]
+  siteStageHistories            SiteStageHistory[]
+  projectResourceRequests       ProjectResourceRequest[]
+  tasks                         Task[]
+  employeeProjectAssignments    EmployeeProjectAssignment[]
+  employeeAvailabilityOverrides EmployeeAvailabilityOverride[]
+  employeeDocuments             EmployeeDocument[]
+  workPasses                    WorkPass[]
+  employeeCertifications        EmployeeCertification[]
+  shiftTypes                    ShiftType[]
+  holidays                      Holiday[]
+  attendanceRecords             AttendanceRecord[]
+  leaveTypes                    LeaveType[]
+  leaveBalances                 LeaveBalance[]
+  leaveRequests                 LeaveRequest[]
+  approvalRequests              ApprovalRequest[]
+  approvalSteps                 ApprovalStep[]
+  notifications                 Notification[]
+  leads                         Lead[]
+  tenders                       Tender[]
+  quotations                    Quotation[]
+  pricingLines                  PricingLine[]
+  projectDocuments              ProjectDocument[]
+  projectBudgetLines            ProjectBudgetLine[]
+  progressClaims                ProgressClaim[]
+  defectItems                   DefectItem[]
+  materialCategories            MaterialCategory[]
+  materials                     Material[]
+  suppliers                     Supplier[]
+  warehouses                    Warehouse[]
+  stockLevels                   StockLevel[]
+  stockTransactions             StockTransaction[]
+  purchaseOrders                PurchaseOrder[]
+  purchaseOrderLines            PurchaseOrderLine[]
+  goodsReceipts                 GoodsReceipt[]
+  goodsReceiptLines             GoodsReceiptLine[]
+  supplierDocuments             SupplierDocument[]
+  stockTransfers                StockTransfer[]
+
+  @@map("companies")
+}
+
+/// Platform-level operator account — sits above every Company, never
+/// tenant-scoped, never subject to the Prisma tenant-scoping extension.
+/// Manages company creation/activation via the /platform-admin control
+/// panel. Deliberately a separate table/auth-stack from User, not a role
+/// on UserRole — see lib/auth/platform-admin-guards.ts.
+model PlatformAdmin {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  name         String
+  passwordHash String    @map("password_hash")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  sessions PlatformAdminSession[]
+
+  @@map("platform_admins")
+}
+
+model PlatformAdminSession {
+  id              String   @id @default(uuid())
+  platformAdminId String   @map("platform_admin_id")
+  tokenHash       String   @unique @map("token_hash")
+  expiresAt       DateTime @map("expires_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  platformAdmin PlatformAdmin @relation(fields: [platformAdminId], references: [id], onDelete: Cascade)
+
+  @@map("platform_admin_sessions")
+}
+
 /// Application user. Role is enum-safe at the TypeScript layer via UserRole
 /// (see lib/authorization/roles.ts); Role.code enforces uniqueness in the DB.
 model User {
   id                 String    @id @default(uuid())
+  companyId          String    @default("") @map("company_id")
   name               String
-  email              String    @unique
+  email              String
   passwordHash       String    @map("password_hash")
   roleId             String    @map("role_id")
   role               Role      @relation(fields: [roleId], references: [id])
@@ -31,13 +163,16 @@ model User {
   employee            Employee?
   passwordResetTokens PasswordResetToken[]
   notifications       Notification[]
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, email])
   @@map("users")
 }
 
 model Role {
   id           String   @id @default(uuid())
-  code         String   @unique
+  companyId    String   @default("") @map("company_id")
+  code         String
   name         String
   description  String?
   isSystemRole Boolean  @default(false) @map("is_system_role")
@@ -47,13 +182,16 @@ model Role {
 
   users           User[]
   rolePermissions RolePermission[]
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("roles")
 }
 
 model Permission {
   id          String   @id @default(uuid())
-  code        String   @unique
+  companyId   String   @default("") @map("company_id")
+  code        String
   module      String
   resource    String
   action      String
@@ -61,12 +199,15 @@ model Permission {
   createdAt   DateTime @default(now()) @map("created_at")
 
   rolePermissions RolePermission[]
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("permissions")
 }
 
 model RolePermission {
   id           String   @id @default(uuid())
+  companyId    String   @default("") @map("company_id")
   roleId       String   @map("role_id")
   permissionId String   @map("permission_id")
   allowed      Boolean  @default(true)
@@ -74,6 +215,7 @@ model RolePermission {
 
   role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@unique([roleId, permissionId])
   @@map("role_permissions")
@@ -81,6 +223,7 @@ model RolePermission {
 
 model Session {
   id        String   @id @default(uuid())
+  companyId String   @default("") @map("company_id")
   userId    String   @map("user_id")
   tokenHash String   @unique @map("token_hash")
   expiresAt DateTime @map("expires_at")
@@ -88,13 +231,15 @@ model Session {
   ipAddress String?  @map("ip_address")
   userAgent String?  @map("user_agent")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("sessions")
 }
 
 model AuditLog {
   id         String   @id @default(uuid())
+  companyId  String?  @map("company_id")
   userId     String?  @map("user_id")
   action     String
   entityType String   @map("entity_type")
@@ -107,7 +252,8 @@ model AuditLog {
   requestId  String?  @map("request_id")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  user User? @relation("AuditLogUser", fields: [userId], references: [id], onDelete: SetNull)
+  user    User?    @relation("AuditLogUser", fields: [userId], references: [id], onDelete: SetNull)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("audit_logs")
 }
@@ -118,13 +264,15 @@ model AuditLog {
 /// is configured yet (see README limitations).
 model PasswordResetToken {
   id        String    @id @default(uuid())
+  companyId String    @default("") @map("company_id")
   userId    String    @map("user_id")
   tokenHash String    @unique @map("token_hash")
   expiresAt DateTime  @map("expires_at")
   usedAt    DateTime? @map("used_at")
   createdAt DateTime  @default(now()) @map("created_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("password_reset_tokens")
 }
@@ -135,7 +283,8 @@ model PasswordResetToken {
 
 model Department {
   id                 String   @id @default(uuid())
-  code               String   @unique
+  companyId          String   @default("") @map("company_id")
+  code               String
   name               String
   description        String?
   parentDepartmentId String?  @map("parent_department_id")
@@ -151,13 +300,16 @@ model Department {
   managerEmployee  Employee?     @relation("DepartmentManager", fields: [managerEmployeeId], references: [id])
   employees        Employee[]    @relation("EmployeeDepartment")
   designations     Designation[]
+  company          Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("departments")
 }
 
 model Designation {
   id           String   @id @default(uuid())
-  code         String   @unique
+  companyId    String   @default("") @map("company_id")
+  code         String
   name         String
   description  String?
   gradeId      String?  @map("grade_id")
@@ -172,7 +324,9 @@ model Designation {
   employees  Employee[]       @relation("EmployeeDesignation")
 
   requiredDocuments DesignationRequiredDocument[]
+  company           Company                       @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("designations")
 }
 
@@ -181,6 +335,7 @@ model Designation {
 /// checklist on an employee's profile — not a hard upload gate.
 model DesignationRequiredDocument {
   id             String   @id @default(uuid())
+  companyId      String   @default("") @map("company_id")
   designationId  String   @map("designation_id")
   documentTypeId String   @map("document_type_id")
   isMandatory    Boolean  @default(true) @map("is_mandatory")
@@ -189,6 +344,7 @@ model DesignationRequiredDocument {
 
   designation  Designation  @relation(fields: [designationId], references: [id], onDelete: Cascade)
   documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@unique([designationId, documentTypeId])
   @@map("designation_required_documents")
@@ -196,7 +352,8 @@ model DesignationRequiredDocument {
 
 model EmploymentGrade {
   id          String   @id @default(uuid())
-  code        String   @unique
+  companyId   String   @default("") @map("company_id")
+  code        String
   name        String
   rank        Int
   description String?
@@ -206,13 +363,16 @@ model EmploymentGrade {
 
   designations Designation[]
   employees    Employee[]    @relation("EmployeeGrade")
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("employment_grades")
 }
 
 model EmploymentType {
   id          String   @id @default(uuid())
-  code        String   @unique
+  companyId   String   @default("") @map("company_id")
+  code        String
   name        String
   description String?
   isActive    Boolean  @default(true) @map("is_active")
@@ -220,13 +380,16 @@ model EmploymentType {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   employees Employee[] @relation("EmployeeEmploymentType")
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("employment_types")
 }
 
 model ProjectRole {
   id          String   @id @default(uuid())
-  code        String   @unique
+  companyId   String   @default("") @map("company_id")
+  code        String
   name        String
   description String?
   isActive    Boolean  @default(true) @map("is_active")
@@ -234,14 +397,23 @@ model ProjectRole {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   assignments EmployeeProjectAssignment[]
+  company     Company                     @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("project_roles")
 }
 
 model DocumentType {
   id                   String   @id @default(uuid())
-  code                 String   @unique
+  companyId            String   @default("") @map("company_id")
+  code                 String
   name                 String
+  /// DocumentTypeScope[] (EMPLOYEE | PROJECT | SUPPLIER) — which upload
+  /// surfaces this type may be selected from. See lib/hr/constants.ts.
+  /// Defaults empty only to let the migration land on existing rows; the
+  /// seed script's upsert immediately backfills real values afterward, and
+  /// every write path (create/update form) requires at least one entry.
+  appliesTo            String[] @default([]) @map("applies_to")
   requiresExpiryDate   Boolean  @default(false) @map("requires_expiry_date")
   isConfidential       Boolean  @default(false) @map("is_confidential")
   allowedMimeTypes     String[] @map("allowed_mime_types")
@@ -255,13 +427,16 @@ model DocumentType {
   requiredByDesignations DesignationRequiredDocument[]
   supplierDocuments      SupplierDocument[]
   projectDocuments       ProjectDocument[]
+  company                Company                       @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("document_types")
 }
 
 model CertificationType {
   id                    String   @id @default(uuid())
-  code                  String   @unique
+  companyId             String   @default("") @map("company_id")
+  code                  String
   name                  String
   issuingAuthority      String?  @map("issuing_authority")
   requiresExpiryDate    Boolean  @default(true) @map("requires_expiry_date")
@@ -272,15 +447,23 @@ model CertificationType {
   updatedAt             DateTime @updatedAt @map("updated_at")
 
   certifications EmployeeCertification[]
+  company        Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("certification_types")
 }
 
 /// Single-row counter driving EXL-EMP-##### employee numbers. Updated inside
 /// the creating transaction via SELECT ... FOR UPDATE — never count()+1.
+/**
+ * One counter row per company — companyId IS the primary key (not a
+ * separate `id`), since each company needs its own independent employee
+ * numbering sequence starting from zero, not a shared global counter.
+ */
 model EmployeeNumberSequence {
-  id         Int @id @default(1)
-  lastNumber Int @default(0) @map("last_number")
+  companyId  String  @id @map("company_id")
+  lastNumber Int     @default(0) @map("last_number")
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("employee_number_sequence")
 }
@@ -291,7 +474,8 @@ model EmployeeNumberSequence {
 
 model Employee {
   id             String  @id @default(uuid())
-  employeeNumber String  @unique @map("employee_number")
+  companyId      String  @default("") @map("company_id")
+  employeeNumber String  @map("employee_number")
   userId         String? @unique @map("user_id")
 
   firstName     String  @map("first_name")
@@ -310,7 +494,7 @@ model Employee {
   passportLast4        String? @map("passport_last4")
 
   personalEmail         String? @map("personal_email")
-  workEmail             String? @unique @map("work_email")
+  workEmail             String? @map("work_email")
   mobileNumber          String? @map("mobile_number")
   alternateMobileNumber String? @map("alternate_mobile_number")
 
@@ -366,7 +550,10 @@ model Employee {
   salaryStructure       SalaryStructure?
   payslips              Payslip[]
   managedWarehouses     Warehouse[]                    @relation("WarehouseManager")
+  company               Company                        @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, employeeNumber])
+  @@unique([companyId, workEmail])
   @@index([departmentId])
   @@index([reportingManagerId])
   @@map("employees")
@@ -374,6 +561,7 @@ model Employee {
 
 model EmployeeAddress {
   id          String   @id @default(uuid())
+  companyId   String   @default("") @map("company_id")
   employeeId  String   @map("employee_id")
   type        String
   line1       String
@@ -386,6 +574,7 @@ model EmployeeAddress {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@unique([employeeId, type])
   @@map("employee_addresses")
@@ -393,6 +582,7 @@ model EmployeeAddress {
 
 model EmergencyContact {
   id             String   @id @default(uuid())
+  companyId      String   @default("") @map("company_id")
   employeeId     String   @map("employee_id")
   name           String
   relationship   String
@@ -404,12 +594,14 @@ model EmergencyContact {
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("emergency_contacts")
 }
 
 model EmployeeBankAccount {
   id                      String    @id @default(uuid())
+  companyId               String    @default("") @map("company_id")
   employeeId              String    @map("employee_id")
   bankName                String    @map("bank_name")
   accountHolderName       String    @map("account_holder_name")
@@ -425,6 +617,7 @@ model EmployeeBankAccount {
   createdBy               String?   @map("created_by")
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("employee_bank_accounts")
 }
@@ -432,6 +625,7 @@ model EmployeeBankAccount {
 /// Append-only. Never updated — a new row is written for every transition.
 model EmployeeStatusHistory {
   id             String   @id @default(uuid())
+  companyId      String   @default("") @map("company_id")
   employeeId     String   @map("employee_id")
   previousStatus String?  @map("previous_status")
   newStatus      String   @map("new_status")
@@ -443,6 +637,7 @@ model EmployeeStatusHistory {
   createdAt      DateTime @default(now()) @map("created_at")
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("employee_status_history")
 }
@@ -457,6 +652,7 @@ model EmployeeStatusHistory {
 
 model SalaryStructure {
   id                 String   @id @default(uuid())
+  companyId          String   @default("") @map("company_id")
   employeeId         String   @unique @map("employee_id")
   basicMonthlySalary Decimal  @map("basic_monthly_salary") @db.Decimal(12, 2)
   effectiveFrom      DateTime @map("effective_from")
@@ -467,12 +663,14 @@ model SalaryStructure {
 
   employee   Employee                @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   components CompensationComponent[]
+  company    Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("salary_structures")
 }
 
 model CompensationComponent {
   id                String   @id @default(uuid())
+  companyId         String   @default("") @map("company_id")
   salaryStructureId String   @map("salary_structure_id")
   type              String   @map("type") // ALLOWANCE | DEDUCTION | BONUS
   code              String
@@ -482,12 +680,14 @@ model CompensationComponent {
   createdAt         DateTime @default(now()) @map("created_at")
 
   salaryStructure SalaryStructure @relation(fields: [salaryStructureId], references: [id], onDelete: Cascade)
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("compensation_components")
 }
 
 model PayrollPeriod {
   id                String    @id @default(uuid())
+  companyId         String    @default("") @map("company_id")
   periodMonth       Int       @map("period_month")
   periodYear        Int       @map("period_year")
   status            String    @default("OPEN")
@@ -499,13 +699,15 @@ model PayrollPeriod {
   createdBy         String    @map("created_by")
 
   payslips Payslip[]
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
-  @@unique([periodYear, periodMonth])
+  @@unique([companyId, periodYear, periodMonth])
   @@map("payroll_periods")
 }
 
 model Payslip {
   id                  String   @id @default(uuid())
+  companyId           String   @default("") @map("company_id")
   payrollPeriodId     String   @map("payroll_period_id")
   employeeId          String   @map("employee_id")
   basicPay            Decimal  @map("basic_pay") @db.Decimal(12, 2)
@@ -528,6 +730,7 @@ model Payslip {
   payrollPeriod PayrollPeriod     @relation(fields: [payrollPeriodId], references: [id], onDelete: Cascade)
   employee      Employee          @relation(fields: [employeeId], references: [id])
   lineItems     PayslipLineItem[]
+  company       Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@unique([payrollPeriodId, employeeId])
   @@map("payslips")
@@ -535,12 +738,14 @@ model Payslip {
 
 model PayslipLineItem {
   id        String  @id @default(uuid())
+  companyId String  @default("") @map("company_id")
   payslipId String  @map("payslip_id")
   type      String // EARNING | DEDUCTION | EMPLOYER_CONTRIBUTION
   label     String
   amount    Decimal @db.Decimal(12, 2)
 
   payslip Payslip @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("payslip_line_items")
 }
@@ -550,6 +755,7 @@ model PayslipLineItem {
 /// verified against the current CPF Board rates before any real payroll run.
 model CpfContributionRate {
   id            String    @id @default(uuid())
+  companyId     String    @default("") @map("company_id")
   ageBandLabel  String    @map("age_band_label")
   minAge        Int       @map("min_age")
   maxAge        Int?      @map("max_age")
@@ -559,6 +765,7 @@ model CpfContributionRate {
   effectiveFrom DateTime  @map("effective_from")
   effectiveTo   DateTime? @map("effective_to")
   createdAt     DateTime  @default(now()) @map("created_at")
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("cpf_contribution_rates")
 }
@@ -572,7 +779,8 @@ model CpfContributionRate {
 
 model Project {
   id              String    @id @default(uuid())
-  code            String    @unique
+  companyId       String    @default("") @map("company_id")
+  code            String
   name            String
   clientName      String?   @map("client_name")
   description     String?
@@ -612,12 +820,15 @@ model Project {
   documents           ProjectDocument[]
   progressClaims      ProgressClaim[]
   defects             DefectItem[]
+  company             Company                     @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("projects")
 }
 
 model Site {
   id                        String   @id @default(uuid())
+  companyId                 String   @default("") @map("company_id")
   projectId                 String   @map("project_id")
   code                      String
   name                      String
@@ -637,6 +848,7 @@ model Site {
   tasks               Task[]
   checklistItems      SiteStageChecklistItem[]
   defectItems         DefectItem[]
+  company             Company                     @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@unique([projectId, code])
   @@map("sites")
@@ -651,6 +863,7 @@ model Site {
 /// longer editable (see SITE_STAGE_CHECKLIST_LOCKED).
 model SiteStageChecklistItem {
   id        String    @id @default(uuid())
+  companyId String    @default("") @map("company_id")
   siteId    String    @map("site_id")
   stage     String
   itemIndex Int       @map("item_index")
@@ -660,7 +873,8 @@ model SiteStageChecklistItem {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  site    Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@unique([siteId, stage, itemIndex])
   @@map("site_stage_checklist_items")
@@ -673,6 +887,7 @@ model SiteStageChecklistItem {
 /// attribution for those two rows lives on the linked ApprovalStep instead.
 model SiteStageHistory {
   id                String   @id @default(uuid())
+  companyId         String   @default("") @map("company_id")
   siteId            String   @map("site_id")
   previousStage     String?  @map("previous_stage")
   newStage          String   @map("new_stage")
@@ -682,7 +897,8 @@ model SiteStageHistory {
   approvalRequestId String?  @map("approval_request_id")
   createdAt         DateTime @default(now()) @map("created_at")
 
-  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  site    Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([siteId, createdAt])
   @@map("site_stage_history")
@@ -694,6 +910,7 @@ model SiteStageHistory {
 /// is deliberately deferred to the later ERP phase.
 model ProjectResourceRequest {
   id                     String    @id @default(uuid())
+  companyId              String    @default("") @map("company_id")
   projectId              String    @map("project_id")
   siteId                 String?   @map("site_id")
   materialId             String?   @map("material_id")
@@ -724,6 +941,7 @@ model ProjectResourceRequest {
   site                 Site?      @relation(fields: [siteId], references: [id])
   material             Material?  @relation(fields: [materialId], references: [id])
   fulfillmentWarehouse Warehouse? @relation(fields: [fulfillmentWarehouseId], references: [id])
+  company              Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([projectId, status])
   @@map("project_resource_requests")
@@ -735,6 +953,7 @@ model ProjectResourceRequest {
 /// via CANCELLED, never hard-deleted, matching the platform-wide convention.
 model Task {
   id                   String    @id @default(uuid())
+  companyId            String    @default("") @map("company_id")
   projectId            String    @map("project_id")
   siteId               String?   @map("site_id")
   title                String
@@ -763,6 +982,7 @@ model Task {
   assignee   Employee @relation("TaskAssignee", fields: [assignedToEmployeeId], references: [id])
   parentTask Task?    @relation("TaskHierarchy", fields: [parentTaskId], references: [id])
   subtasks   Task[]   @relation("TaskHierarchy")
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([projectId, status])
   @@index([assignedToEmployeeId, status])
@@ -772,6 +992,7 @@ model Task {
 
 model EmployeeProjectAssignment {
   id                   String    @id @default(uuid())
+  companyId            String    @default("") @map("company_id")
   employeeId           String    @map("employee_id")
   projectId            String    @map("project_id")
   siteId               String?   @map("site_id")
@@ -791,6 +1012,7 @@ model EmployeeProjectAssignment {
   project     Project      @relation(fields: [projectId], references: [id])
   site        Site?        @relation(fields: [siteId], references: [id])
   projectRole ProjectRole? @relation(fields: [projectRoleId], references: [id])
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([employeeId, status])
   @@map("employee_project_assignments")
@@ -801,6 +1023,7 @@ model EmployeeProjectAssignment {
 /// only while current.
 model EmployeeAvailabilityOverride {
   id             String    @id @default(uuid())
+  companyId      String    @default("") @map("company_id")
   employeeId     String    @map("employee_id")
   status         String
   reason         String
@@ -810,6 +1033,7 @@ model EmployeeAvailabilityOverride {
   createdAt      DateTime  @default(now()) @map("created_at")
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("employee_availability_overrides")
 }
@@ -820,6 +1044,7 @@ model EmployeeAvailabilityOverride {
 
 model EmployeeDocument {
   id               String    @id @default(uuid())
+  companyId        String    @default("") @map("company_id")
   employeeId       String    @map("employee_id")
   documentTypeId   String    @map("document_type_id")
   storageKey       String    @map("storage_key")
@@ -847,6 +1072,7 @@ model EmployeeDocument {
   revisions      EmployeeDocument[]      @relation("DocumentRevision")
   workPasses     WorkPass[]
   certifications EmployeeCertification[]
+  company        Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([employeeId])
   @@map("employee_documents")
@@ -854,6 +1080,7 @@ model EmployeeDocument {
 
 model WorkPass {
   id               String    @id @default(uuid())
+  companyId        String    @default("") @map("company_id")
   employeeId       String    @map("employee_id")
   passType         String    @map("pass_type")
   passNumber       String    @map("pass_number")
@@ -871,6 +1098,7 @@ model WorkPass {
 
   employee Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   document EmployeeDocument? @relation(fields: [documentId], references: [id])
+  company  Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([employeeId])
   @@map("work_passes")
@@ -878,6 +1106,7 @@ model WorkPass {
 
 model EmployeeCertification {
   id               String    @id @default(uuid())
+  companyId        String    @default("") @map("company_id")
   employeeId       String    @map("employee_id")
   typeId           String    @map("type_id")
   licenceNumber    String    @map("licence_number")
@@ -895,6 +1124,7 @@ model EmployeeCertification {
   employee Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   type     CertificationType @relation(fields: [typeId], references: [id])
   document EmployeeDocument? @relation(fields: [documentId], references: [id])
+  company  Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([employeeId])
   @@map("employee_certifications")
@@ -906,7 +1136,8 @@ model EmployeeCertification {
 
 model ShiftType {
   id                 String   @id @default(uuid())
-  code               String   @unique
+  companyId          String   @default("") @map("company_id")
+  code               String
   name               String
   startTime          String   @map("start_time")
   endTime            String   @map("end_time")
@@ -917,18 +1148,23 @@ model ShiftType {
 
   employees         Employee[]         @relation("EmployeeDefaultShift")
   attendanceRecords AttendanceRecord[]
+  company           Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("shift_types")
 }
 
 model Holiday {
   id          String   @id @default(uuid())
-  date        DateTime @unique @db.Date
+  companyId   String   @default("") @map("company_id")
+  date        DateTime @db.Date
   name        String
   description String?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, date])
   @@map("holidays")
 }
 
@@ -937,6 +1173,7 @@ model Holiday {
 /// mirrors the EmployeeAvailabilityOverride "derive, don't sweep" pattern.
 model AttendanceRecord {
   id          String    @id @default(uuid())
+  companyId   String    @default("") @map("company_id")
   employeeId  String    @map("employee_id")
   date        DateTime  @db.Date
   siteId      String?   @map("site_id")
@@ -954,6 +1191,7 @@ model AttendanceRecord {
   employee  Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   site      Site?      @relation(fields: [siteId], references: [id])
   shiftType ShiftType? @relation(fields: [shiftTypeId], references: [id])
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@unique([employeeId, date])
   @@index([employeeId, date])
@@ -967,7 +1205,8 @@ model AttendanceRecord {
 
 model LeaveType {
   id                     String   @id @default(uuid())
-  code                   String   @unique
+  companyId              String   @default("") @map("company_id")
+  code                   String
   name                   String
   defaultEntitlementDays Decimal  @map("default_entitlement_days") @db.Decimal(5, 1)
   isPaid                 Boolean  @default(true) @map("is_paid")
@@ -977,7 +1216,9 @@ model LeaveType {
 
   balances LeaveBalance[]
   requests LeaveRequest[]
+  company  Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("leave_types")
 }
 
@@ -987,6 +1228,7 @@ model LeaveType {
 /// — avoids the stored-used-count ever drifting from actual approved requests.
 model LeaveBalance {
   id                 String   @id @default(uuid())
+  companyId          String   @default("") @map("company_id")
   employeeId         String   @map("employee_id")
   leaveTypeId        String   @map("leave_type_id")
   year               Int
@@ -998,6 +1240,7 @@ model LeaveBalance {
 
   employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@unique([employeeId, leaveTypeId, year])
   @@map("leave_balances")
@@ -1005,6 +1248,7 @@ model LeaveBalance {
 
 model LeaveRequest {
   id                String   @id @default(uuid())
+  companyId         String   @default("") @map("company_id")
   employeeId        String   @map("employee_id")
   leaveTypeId       String   @map("leave_type_id")
   startDate         DateTime @map("start_date") @db.Date
@@ -1020,6 +1264,7 @@ model LeaveRequest {
 
   employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([employeeId, status])
   @@index([leaveTypeId])
@@ -1041,6 +1286,7 @@ model LeaveRequest {
 /// the decision. See lib/services/approval-service.ts for the full contract.
 model ApprovalRequest {
   id                    String   @id @default(uuid())
+  companyId             String   @default("") @map("company_id")
   module                String // e.g. "LEAVE" | "EQUIPMENT_REQUEST" | "PROJECT_STAGE_GATE"
   entityType            String   @map("entity_type") // e.g. "LeaveRequest"
   entityId              String   @map("entity_id")
@@ -1054,7 +1300,8 @@ model ApprovalRequest {
   updatedAt             DateTime @updatedAt @map("updated_at")
   version               Int      @default(1)
 
-  steps ApprovalStep[]
+  steps   ApprovalStep[]
+  company Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([module, entityType, entityId])
   @@index([status])
@@ -1069,6 +1316,7 @@ model ApprovalRequest {
 /// require redesigning the table under live data.
 model ApprovalStep {
   id                String    @id @default(uuid())
+  companyId         String    @default("") @map("company_id")
   approvalRequestId String    @map("approval_request_id")
   stepOrder         Int       @map("step_order")
   approverUserId    String?   @map("approver_user_id") // resolved specific approver, if known
@@ -1080,6 +1328,7 @@ model ApprovalStep {
   createdAt         DateTime  @default(now()) @map("created_at")
 
   approvalRequest ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@unique([approvalRequestId, stepOrder])
   @@index([approverUserId, status])
@@ -1096,6 +1345,7 @@ model ApprovalStep {
 /// is the in-app channel only.
 model Notification {
   id         String    @id @default(uuid())
+  companyId  String    @default("") @map("company_id")
   userId     String    @map("user_id")
   type       String // e.g. "APPROVAL_DECIDED"
   title      String
@@ -1106,7 +1356,8 @@ model Notification {
   readAt     DateTime? @map("read_at")
   createdAt  DateTime  @default(now()) @map("created_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([userId, isRead])
   @@map("notifications")
@@ -1130,7 +1381,8 @@ model Notification {
 
 model Lead {
   id                String   @id @default(uuid())
-  code              String   @unique
+  companyId         String   @default("") @map("company_id")
+  code              String
   clientName        String   @map("client_name")
   contactPersonName String?  @map("contact_person_name")
   contactPhone      String?  @map("contact_phone")
@@ -1149,7 +1401,9 @@ model Lead {
   quotations       Quotation[]
   documents        ProjectDocument[]
   convertedProject Project?
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("leads")
 }
 
@@ -1161,6 +1415,7 @@ model Lead {
 /// tender-service.ts, not just the client).
 model Tender {
   id                         String    @id @default(uuid())
+  companyId                  String    @default("") @map("company_id")
   leadId                     String    @unique @map("lead_id")
   tenderReferenceNo          String?   @map("tender_reference_no")
   issuingBody                String?   @map("issuing_body") // e.g. "HDB", "Tampines Town Council"
@@ -1182,8 +1437,9 @@ model Tender {
   createdAt                  DateTime  @default(now()) @map("created_at")
   updatedAt                  DateTime  @updatedAt @map("updated_at")
 
-  lead  Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  lines PricingLine[]
+  lead    Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lines   PricingLine[]
+  company Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("tenders")
 }
@@ -1193,6 +1449,7 @@ model Tender {
 /// sent one, matching the immutable-ledger convention used elsewhere).
 model Quotation {
   id          String    @id @default(uuid())
+  companyId   String    @default("") @map("company_id")
   leadId      String    @map("lead_id")
   version     Int       @default(1)
   status      String    @default("DRAFT") // DRAFT | SENT | NEGOTIATING | ACCEPTED | REJECTED | EXPIRED
@@ -1203,8 +1460,9 @@ model Quotation {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  lead  Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  lines PricingLine[]
+  lead    Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lines   PricingLine[]
+  company Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("quotations")
 }
@@ -1217,6 +1475,7 @@ model Quotation {
 /// "denormalized snapshot" reasoning.
 model PricingLine {
   id          String   @id @default(uuid())
+  companyId   String   @default("") @map("company_id")
   tenderId    String?  @map("tender_id")
   quotationId String?  @map("quotation_id")
   itemNo      String   @map("item_no")
@@ -1229,6 +1488,7 @@ model PricingLine {
 
   tender    Tender?    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   quotation Quotation? @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("pricing_lines")
 }
@@ -1239,6 +1499,7 @@ model PricingLine {
 /// document from leadId to projectId at conversion, no copy/duplication.
 model ProjectDocument {
   id               String   @id @default(uuid())
+  companyId        String   @default("") @map("company_id")
   projectId        String?  @map("project_id")
   leadId           String?  @map("lead_id")
   documentTypeId   String   @map("document_type_id")
@@ -1258,6 +1519,7 @@ model ProjectDocument {
   documentType DocumentType      @relation(fields: [documentTypeId], references: [id])
   revisionOf   ProjectDocument?  @relation("DocRevision", fields: [revisionOfId], references: [id])
   revisions    ProjectDocument[] @relation("DocRevision")
+  company      Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("project_documents")
 }
@@ -1269,6 +1531,7 @@ model ProjectDocument {
 /// trigger, updated explicitly by the service layer on PO approval.
 model ProjectBudgetLine {
   id              String   @id @default(uuid())
+  companyId       String   @default("") @map("company_id")
   projectId       String   @map("project_id")
   category        String // LABOUR | MATERIAL | EQUIPMENT | SUBCONTRACT | OVERHEAD
   description     String?
@@ -1279,6 +1542,7 @@ model ProjectBudgetLine {
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("project_budget_lines")
 }
@@ -1291,6 +1555,7 @@ model ProjectBudgetLine {
 /// generic engine (PROGRESS_CLAIM module), same shape as PAYROLL_RUN.
 model ProgressClaim {
   id                  String    @id @default(uuid())
+  companyId           String    @default("") @map("company_id")
   projectId           String    @map("project_id")
   claimNumber         Int       @map("claim_number")
   claimPeriodTo       DateTime  @map("claim_period_to")
@@ -1308,6 +1573,7 @@ model ProgressClaim {
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@unique([projectId, claimNumber])
   @@map("progress_claims")
@@ -1320,6 +1586,7 @@ model ProgressClaim {
 /// site-scoped views.
 model DefectItem {
   id          String    @id @default(uuid())
+  companyId   String    @default("") @map("company_id")
   projectId   String    @map("project_id")
   siteId      String?   @map("site_id")
   description String
@@ -1334,6 +1601,7 @@ model DefectItem {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   site    Site?   @relation(fields: [siteId], references: [id])
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("defect_items")
 }
@@ -1346,7 +1614,8 @@ model DefectItem {
 
 model MaterialCategory {
   id          String   @id @default(uuid())
-  code        String   @unique
+  companyId   String   @default("") @map("company_id")
+  code        String
   name        String
   description String?
   isActive    Boolean  @default(true) @map("is_active")
@@ -1354,7 +1623,9 @@ model MaterialCategory {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   materials Material[]
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("material_categories")
 }
 
@@ -1364,7 +1635,8 @@ model MaterialCategory {
 /// budgeting and quotations, not an authoritative price list.
 model Material {
   id            String   @id @default(uuid())
-  code          String   @unique
+  companyId     String   @default("") @map("company_id")
+  code          String
   name          String
   type          String   @default("MATERIAL") // MATERIAL | EQUIPMENT | SERVICE
   categoryId    String?  @map("category_id")
@@ -1382,13 +1654,16 @@ model Material {
   resourceRequests   ProjectResourceRequest[]
   purchaseOrderLines PurchaseOrderLine[]
   stockTransfers     StockTransfer[]
+  company            Company                  @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("materials")
 }
 
 model Supplier {
   id                String   @id @default(uuid())
-  code              String   @unique
+  companyId         String   @default("") @map("company_id")
+  code              String
   name              String
   contactPersonName String?  @map("contact_person_name")
   phone             String?
@@ -1401,7 +1676,9 @@ model Supplier {
 
   purchaseOrders PurchaseOrder[]
   documents      SupplierDocument[]
+  company        Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("suppliers")
 }
 
@@ -1413,7 +1690,8 @@ model Supplier {
 /// exist unmanaged (e.g. during initial setup).
 model Warehouse {
   id                  String   @id @default(uuid())
-  code                String   @unique
+  companyId           String   @default("") @map("company_id")
+  code                String
   name                String
   address             String?
   isActive            Boolean  @default(true) @map("is_active")
@@ -1428,7 +1706,9 @@ model Warehouse {
   resourceRequests  ProjectResourceRequest[]
   transfersOut      StockTransfer[]          @relation("TransferFrom")
   transfersIn       StockTransfer[]          @relation("TransferTo")
+  company           Company                  @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, code])
   @@map("warehouses")
 }
 
@@ -1439,6 +1719,7 @@ model Warehouse {
 /// reads.
 model StockLevel {
   id             String   @id @default(uuid())
+  companyId      String   @default("") @map("company_id")
   materialId     String   @map("material_id")
   warehouseId    String   @map("warehouse_id")
   quantityOnHand Decimal  @default(0) @map("quantity_on_hand") @db.Decimal(14, 2)
@@ -1446,6 +1727,7 @@ model StockLevel {
 
   material  Material  @relation(fields: [materialId], references: [id], onDelete: Cascade)
   warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@unique([materialId, warehouseId])
   @@map("stock_levels")
@@ -1461,6 +1743,7 @@ model StockLevel {
 /// those rows lives on the linked ApprovalStep instead.
 model StockTransaction {
   id            String   @id @default(uuid())
+  companyId     String   @default("") @map("company_id")
   materialId    String   @map("material_id")
   warehouseId   String   @map("warehouse_id")
   type          String // RECEIPT | ISSUE | ADJUSTMENT
@@ -1473,6 +1756,7 @@ model StockTransaction {
 
   material  Material  @relation(fields: [materialId], references: [id])
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([materialId, createdAt])
   @@index([warehouseId, createdAt])
@@ -1485,7 +1769,8 @@ model StockTransaction {
 /// generally restocks the warehouse in general, not one earmarked request.
 model PurchaseOrder {
   id                   String    @id @default(uuid())
-  poNumber             String    @unique @map("po_number")
+  companyId            String    @default("") @map("company_id")
+  poNumber             String    @map("po_number")
   supplierId           String    @map("supplier_id")
   warehouseId          String    @map("warehouse_id")
   projectId            String?   @map("project_id")
@@ -1504,12 +1789,15 @@ model PurchaseOrder {
   lines         PurchaseOrderLine[]
   goodsReceipts GoodsReceipt[]
   documents     SupplierDocument[]
+  company       Company             @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, poNumber])
   @@map("purchase_orders")
 }
 
 model PurchaseOrderLine {
   id               String  @id @default(uuid())
+  companyId        String  @default("") @map("company_id")
   purchaseOrderId  String  @map("purchase_order_id")
   materialId       String  @map("material_id")
   quantityOrdered  Decimal @map("quantity_ordered") @db.Decimal(12, 2)
@@ -1519,6 +1807,7 @@ model PurchaseOrderLine {
   purchaseOrder     PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   material          Material           @relation(fields: [materialId], references: [id])
   goodsReceiptLines GoodsReceiptLine[]
+  company           Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("purchase_order_lines")
 }
@@ -1529,6 +1818,7 @@ model PurchaseOrderLine {
 /// and rolls PurchaseOrderLine.quantityReceived / the parent PO's status.
 model GoodsReceipt {
   id              String   @id @default(uuid())
+  companyId       String   @default("") @map("company_id")
   purchaseOrderId String   @map("purchase_order_id")
   receivedBy      String   @map("received_by")
   receivedAt      DateTime @default(now()) @map("received_at")
@@ -1536,18 +1826,21 @@ model GoodsReceipt {
 
   purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
   lines         GoodsReceiptLine[]
+  company       Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("goods_receipts")
 }
 
 model GoodsReceiptLine {
   id                  String  @id @default(uuid())
+  companyId           String  @default("") @map("company_id")
   goodsReceiptId      String  @map("goods_receipt_id")
   purchaseOrderLineId String  @map("purchase_order_line_id")
   quantityReceived    Decimal @map("quantity_received") @db.Decimal(12, 2)
 
   goodsReceipt      GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
   purchaseOrderLine PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
+  company           Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("goods_receipt_lines")
 }
@@ -1557,6 +1850,7 @@ model GoodsReceiptLine {
 /// standing contract vs. a one-off PO delivery order).
 model SupplierDocument {
   id               String   @id @default(uuid())
+  companyId        String   @default("") @map("company_id")
   supplierId       String?  @map("supplier_id")
   purchaseOrderId  String?  @map("purchase_order_id")
   documentTypeId   String   @map("document_type_id")
@@ -1573,6 +1867,7 @@ model SupplierDocument {
   supplier      Supplier?      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
   purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   documentType  DocumentType   @relation(fields: [documentTypeId], references: [id])
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("supplier_documents")
 }
@@ -1586,6 +1881,7 @@ model SupplierDocument {
 /// treating a transfer as instantaneous.
 model StockTransfer {
   id              String    @id @default(uuid())
+  companyId       String    @default("") @map("company_id")
   materialId      String    @map("material_id")
   fromWarehouseId String    @map("from_warehouse_id")
   toWarehouseId   String    @map("to_warehouse_id")
@@ -1601,6 +1897,7 @@ model StockTransfer {
   material      Material  @relation(fields: [materialId], references: [id])
   fromWarehouse Warehouse @relation("TransferFrom", fields: [fromWarehouseId], references: [id])
   toWarehouse   Warehouse @relation("TransferTo", fields: [toWarehouseId], references: [id])
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("stock_transfers")
 }
