@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { rawDb, db, withTenant } from "@/lib/db";
-import { env } from "@/lib/env";
+import { seedEnv } from "@/lib/seed-env";
 import { hashPassword } from "@/lib/auth/password";
 import { UserRole } from "@/lib/authorization/roles";
 import { seedCompanyDefaults } from "@/lib/services/company-provisioning-service";
@@ -67,7 +67,7 @@ async function seedCompanyUser(companyId: string, input: SeedUserInput): Promise
       return;
     }
 
-    const passwordHash = await hashPassword(env.SEED_SUPER_ADMIN_PASSWORD);
+    const passwordHash = await hashPassword(seedEnv.SEED_SUPER_ADMIN_PASSWORD);
     await db.user.create({
       data: {
         name: input.name,
@@ -86,7 +86,7 @@ async function seedCompanyUser(companyId: string, input: SeedUserInput): Promise
  * /platform-admin — a completely separate identity/table from any
  * per-company User, seeded once, globally (no companyId). */
 async function seedPlatformAdmin() {
-  const normalizedEmail = env.SEED_PLATFORM_ADMIN_EMAIL.trim().toLowerCase();
+  const normalizedEmail = seedEnv.SEED_PLATFORM_ADMIN_EMAIL.trim().toLowerCase();
   const existing = await rawDb.platformAdmin.findUnique({ where: { email: normalizedEmail } });
 
   if (existing) {
@@ -95,10 +95,10 @@ async function seedPlatformAdmin() {
     return;
   }
 
-  const passwordHash = await hashPassword(env.SEED_PLATFORM_ADMIN_PASSWORD);
+  const passwordHash = await hashPassword(seedEnv.SEED_PLATFORM_ADMIN_PASSWORD);
   await rawDb.platformAdmin.create({
     data: {
-      name: env.SEED_PLATFORM_ADMIN_NAME,
+      name: seedEnv.SEED_PLATFORM_ADMIN_NAME,
       email: normalizedEmail,
       passwordHash,
       isActive: true,

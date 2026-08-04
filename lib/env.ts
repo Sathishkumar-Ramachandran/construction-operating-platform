@@ -7,12 +7,6 @@ const envSchema = z.object({
     .string()
     .min(32, "AUTH_SECRET must be at least 32 characters long."),
   AUTH_URL: z.url(),
-  SEED_SUPER_ADMIN_NAME: z.string().min(1),
-  SEED_SUPER_ADMIN_EMAIL: z.email(),
-  SEED_SUPER_ADMIN_PASSWORD: z.string().min(12),
-  SEED_PLATFORM_ADMIN_NAME: z.string().min(1),
-  SEED_PLATFORM_ADMIN_EMAIL: z.email(),
-  SEED_PLATFORM_ADMIN_PASSWORD: z.string().min(12),
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
