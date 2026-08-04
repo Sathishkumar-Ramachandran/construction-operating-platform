@@ -7,6 +7,7 @@ import type { UserRole } from "@/lib/authorization/roles";
 export type AuthenticatedUser = {
   id: string;
   companyId: string;
+  company: { id: string; name: string };
   name: string;
   email: string;
   role: UserRole;

@@ -52,7 +52,7 @@ export function UserMenu({
               {user.name}
             </p>
             <p className="truncate text-xs text-sidebar-foreground/60">
-              {ROLE_LABELS[user.role]}
+              {ROLE_LABELS[user.role]} · {user.company.name}
             </p>
           </div>
         )}
@@ -67,6 +67,7 @@ export function UserMenu({
             {user.name}
           </span>
           <span className="text-xs text-muted-foreground">{user.email}</span>
+          <span className="text-xs text-muted-foreground">{user.company.name}</span>
           <RoleBadge role={user.role} />
         </DropdownMenuLabel>
         <DropdownMenuSeparator />

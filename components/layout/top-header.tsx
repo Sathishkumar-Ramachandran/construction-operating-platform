@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Search } from "lucide-react";
+import { LogOut, Search } from "lucide-react";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { UserMenu } from "@/components/layout/user-menu";
 import { NotificationBell } from "@/components/layout/notification-bell";
@@ -11,6 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { NAVIGATION } from "@/lib/authorization/navigation";
+import { logout } from "@/actions/auth-actions";
 import type { AuthenticatedUser } from "@/types/auth";
 
 function useCurrentPageTitle(pathname: string) {
@@ -60,6 +61,23 @@ export function TopHeader({
         </Tooltip>
 
         <NotificationBell />
+
+        <form action={logout}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="submit"
+                  className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                />
+              }
+            >
+              <LogOut className="size-4" aria-hidden />
+              <span className="sr-only">Logout</span>
+            </TooltipTrigger>
+            <TooltipContent>Logout</TooltipContent>
+          </Tooltip>
+        </form>
 
         <div className="ml-1">
           <UserMenu user={user} compact />

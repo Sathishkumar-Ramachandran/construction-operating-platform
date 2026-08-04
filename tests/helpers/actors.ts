@@ -11,17 +11,21 @@ export function trackedEmail(label: string) {
   return `vitest-${label}-${RUN_ID}@${TEST_EMAIL_DOMAIN}`;
 }
 
-let testCompanyId: string | null = null;
+let testCompany: { id: string; name: string } | null = null;
 
 /** Every existing integration test exercises the single seeded
  * "Excell Enterprises" tenant — resolve it once via rawDb (no tenant
  * context exists yet) and reuse its id as the withTenant scope for the
  * rest of the suite's db calls. */
 export async function getTestCompanyId(): Promise<string> {
-  if (testCompanyId) return testCompanyId;
+  return (await getTestCompany()).id;
+}
+
+async function getTestCompany(): Promise<{ id: string; name: string }> {
+  if (testCompany) return testCompany;
   const company = await rawDb.company.findFirstOrThrow({ where: { slug: "excell-enterprises" } });
-  testCompanyId = company.id;
-  return testCompanyId;
+  testCompany = { id: company.id, name: company.name };
+  return testCompany;
 }
 
 /**
@@ -34,10 +38,10 @@ export async function createActor(
   roleCode: UserRole,
   label: string
 ): Promise<AuthenticatedUser> {
-  const companyId = await getTestCompanyId();
-  return withTenant(companyId, async () => {
+  const company = await getTestCompany();
+  return withTenant(company.id, async () => {
     const role = await db.role.findUniqueOrThrow({
-      where: { companyId_code: { companyId, code: roleCode } },
+      where: { companyId_code: { companyId: company.id, code: roleCode } },
     });
     const passwordHash = await hashPassword("Str0ng!TestPassw0rd");
     const user = await db.user.create({
@@ -51,7 +55,8 @@ export async function createActor(
     });
     return {
       id: user.id,
-      companyId,
+      companyId: company.id,
+      company,
       name: user.name,
       email: user.email,
       role: roleCode,

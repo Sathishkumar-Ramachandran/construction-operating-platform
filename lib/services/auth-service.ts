@@ -8,12 +8,13 @@ import type { UserRole } from "@/lib/authorization/roles";
 import type { AuthenticatedUser } from "@/types/auth";
 import type { Prisma } from "@/generated/prisma/client";
 
-type UserWithRole = Prisma.UserGetPayload<{ include: { role: true } }>;
+type UserWithRole = Prisma.UserGetPayload<{ include: { role: true; company: true } }>;
 
 export function toAuthenticatedUser(user: UserWithRole): AuthenticatedUser {
   return {
     id: user.id,
     companyId: user.companyId as string,
+    company: { id: user.company.id, name: user.company.name },
     name: user.name,
     email: user.email,
     role: user.role.code as UserRole,
